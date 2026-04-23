@@ -1,0 +1,22 @@
+[model]
+name = "test"
+save_dir = "./model"
+pred = "./pred"
+
+[data]
+file = "./data/tobramycin.csv"
+id_col = "ID"
+cov_col = ["AGE", "SEX", "CLCR"]
+inc_cov = true
+
+[settings.train]
+synth_train_epoch = 10
+train_epoch = 10
+finetune_epoch = 10
+learning_rate = 1e-3
+learning_rate_reduced = 1e-4
+
+[settings.nn]
+dim_c = [20, 20, 20]
+dim_V = [10]
+include_covariates = false
