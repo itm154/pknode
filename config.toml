@@ -5,9 +5,15 @@ pred = "./pred"
 
 [data]
 file = "./data/tobramycin.csv"
-id_col = "ID"
-cov_col = ["AGE", "SEX", "CLCR"]
 inc_cov = true
+
+[data.columns]
+id = "ID"
+time = "TIME"
+dose = "DOSE"
+conc = "CP"
+evid = "EVID"
+covariates = ["AGE", "SEX", "CLCR"]
 
 [settings.train]
 synth_train_epoch = 10
