@@ -69,10 +69,11 @@ class PKNODE(nn.Module):
         """
         t_tensor = torch.as_tensor([t], device=z.device)  # pyright: ignore
 
+        # Feature concatenation for the dynamics function
+        # z (state), t (time), z0 (start), u (dose), v (covariates), n (admin #)
         if self.use_covariates:
-            # Feature concatenation for the dynamics function
-            x = torch.cat([z, t_tensor, self.z0, self.u, self.v])
+            x = torch.cat([z, t_tensor, self.z0, self.u, self.v, self.n_admin])
         else:
-            x = torch.cat([z, t_tensor, self.z0, self.u])
+            x = torch.cat([z, t_tensor, self.z0, self.u, self.n_admin])
 
         return self.net_f(x)
