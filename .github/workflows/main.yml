@@ -1,0 +1,17 @@
+name: Ruff Linting
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: ruff
+        uses: astral-sh/ruff-action@v4.0.0
+        with:
+          args: "format --check --diff"
