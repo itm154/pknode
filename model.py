@@ -2,8 +2,8 @@
 # pyright: reportArgumentType=false
 
 import torch
-from torch import Tensor
 import torch.nn as nn
+from torch import Tensor
 
 
 class PKNODE(nn.Module):
@@ -55,7 +55,10 @@ class PKNODE(nn.Module):
         """
         Forward Pass
         """
-        t_tensor = torch.as_tensor([t], device=z.device)
+        if not isinstance(t, torch.Tensor):
+            t_tensor = torch.tensor([t], device=z.device, dtype=z.dtype)
+        else:
+            t_tensor = t.view(1)
 
         # Feature concatenation for the dynamics function
         if self.include_covariates:
