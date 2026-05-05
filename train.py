@@ -96,10 +96,5 @@ if __name__ == "__main__":
         include_cov=include_cov,
     )
 
-    # Save the model
-    save_path = config["model"]["path"]
-    model_name = config["model"]["name"]
-    full_path = os.path.join(save_path, f"{model_name}.pth")
-    os.makedirs(save_path, exist_ok=True)
-    torch.save(model.state_dict(), full_path)
-    print(f"Model saved to {full_path}")
+    model_settings = config["model"]
+    utils.save_model(model, model_settings["name"], model_settings["path"])

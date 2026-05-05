@@ -2,6 +2,7 @@
 # pyright: reportArgumentType=false
 
 import tomllib
+import os
 
 import torch
 from torchdiffeq import odeint
@@ -74,3 +75,10 @@ def solve_multi_dose_ode(data: PKData, patient, node: PKNODE, include_cov: bool)
             sol_tot = torch.cat([sol_tot, sol[1:]])
 
     return sol_tot
+
+
+def save_model(model: PKNODE, name: str, path: str):
+    full_path = os.path.join(path, f"{name}.pth")
+    os.makedirs(path, exist_ok=True)
+    torch.save(model.state_dict(), full_path)
+    print(f"Model saved to {full_path}")
