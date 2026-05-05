@@ -13,52 +13,6 @@ from data import PKData
 from model import PKNODE
 
 
-def main():
-    config = utils.getConfig()
-
-    # Model initialization
-    nn_settings = config["settings"]["nn"]
-    dim_c = nn_settings["dim_c"]
-    if nn_settings["include_covariates"]:
-        dim_V = nn_settings["dim_V"]
-        n_cov = len(config["data"]["columns"]["covariates"])
-        model = PKNODE(dim_c, dim_V, n_cov)
-        include_cov = True
-    else:
-        model = PKNODE(dim_c)
-        include_cov = False
-
-    device = (
-        torch.accelerator.current_accelerator().type  # pyright: ignore
-        if torch.accelerator.is_available()
-        else "cpu"
-    )
-    model.to(device)
-
-    print(model)
-    print(f"Using {device} device")
-
-    data = PKData(config["data"]["file"], config["data"]["columns"])
-
-    train_settings = config["settings"]["train"]
-    train(
-        model,
-        data,
-        epochs=train_settings["train_epoch"],
-        learning_rate=train_settings["learning_rate"],
-        weight_decay=train_settings["weight_decay"],
-        include_cov=include_cov,
-    )
-
-    # Save the model
-    save_path = config["model"]["path"]
-    model_name = config["model"]["name"]
-    full_path = os.path.join(save_path, f"{model_name}.pth")
-    os.makedirs(save_path, exist_ok=True)
-    torch.save(model.state_dict(), full_path)
-    print(f"Model saved to {full_path}")
-
-
 def train(
     model: PKNODE,
     data: PKData,
@@ -106,4 +60,46 @@ def train(
 
 
 if __name__ == "__main__":
-    main()
+    config = utils.getConfig()
+
+    # Model initialization
+    nn_settings = config["settings"]["nn"]
+    dim_c = nn_settings["dim_c"]
+    if nn_settings["include_covariates"]:
+        dim_V = nn_settings["dim_V"]
+        n_cov = len(config["data"]["columns"]["covariates"])
+        model = PKNODE(dim_c, dim_V, n_cov)
+        include_cov = True
+    else:
+        model = PKNODE(dim_c)
+        include_cov = False
+
+    device = (
+        torch.accelerator.current_accelerator().type  # pyright: ignore
+        if torch.accelerator.is_available()
+        else "cpu"
+    )
+    model.to(device)
+
+    print(model)
+    print(f"Using {device} device")
+
+    data = PKData(config["data"]["file"], config["data"]["columns"])
+
+    train_settings = config["settings"]["train"]
+    train(
+        model,
+        data,
+        epochs=train_settings["train_epoch"],
+        learning_rate=train_settings["learning_rate"],
+        weight_decay=train_settings["weight_decay"],
+        include_cov=include_cov,
+    )
+
+    # Save the model
+    save_path = config["model"]["path"]
+    model_name = config["model"]["name"]
+    full_path = os.path.join(save_path, f"{model_name}.pth")
+    os.makedirs(save_path, exist_ok=True)
+    torch.save(model.state_dict(), full_path)
+    print(f"Model saved to {full_path}")
