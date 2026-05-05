@@ -1,7 +1,6 @@
 [model]
 name = "test"
-save_dir = "./model"
-pred = "./pred"
+path = "./models"
 
 [data]
 file = "./data/tobramycin.csv"
@@ -16,11 +15,11 @@ evid = "EVID"
 covariates = ["AGE", "SEX", "CLCR"]
 
 [settings.train]
-synth_train_epoch = 10
+pre_train_epoch = 10
 train_epoch = 10
 finetune_epoch = 10
+weight_decay = 0
 learning_rate = 1e-3
-learning_rate_reduced = 1e-4
 
 [settings.nn]
 dim_c = [20, 20, 20]
