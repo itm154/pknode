@@ -43,16 +43,26 @@ class PKNODE(nn.Module):
         if self.include_covariates:
             layers_V = []
             in_dim_V = dim_cov
-            for dim in dim_V:  # pyright: ignore
-                layers_V.append(nn.Linear(in_dim_V, dim))
-                layers_V.append(nn.Softplus())
-                in_dim_V = dim
+            if dim_V:
+                for dim in dim_V:
+                    layers_V.append(nn.Linear(in_dim_V, dim))
+                    layers_V.append(nn.Softplus())
+                    in_dim_V = dim
 
             layers_V.append(nn.Linear(in_dim_V, 1))
+            layers_V.append(nn.Softplus())  # Ensure Volume is always positive
             self.net_V = nn.Sequential(*layers_V)
         else:
             # If covariates is not used then use constant parameter for volume
-            self.V_param = nn.Parameter(torch.as_tensor([1.0], dtype=torch.float32))
+            self.V_param_internal = nn.Parameter(
+                torch.as_tensor([1.0], dtype=torch.float32)
+            )
+
+    @property
+    def V_param(self):
+        if hasattr(self, "V_param_internal"):
+            return torch.nn.functional.softplus(self.V_param_internal)
+        return None
 
     def forward(self, t: float, z: Tensor) -> Tensor:
         """
