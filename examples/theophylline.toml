@@ -1,24 +1,24 @@
 [model]
-name = "tobramycin"
+name = "theophylline"
 path = "./models"
 
 [data]
-file = "./data/tobramycin.csv"
+file = "./data/theophylline_data.csv"
 inc_cov = true
 
 [data.columns]
 id = "ID"
 time = "TIME"
-dose = "DOSE"
-conc = "CP"
-evid = "EVID"
-covariates = ["AGE", "SEX", "CLCR"]
+dose = "AMT"
+conc = "CONC"
+# evid = "EVID"
+covariates = ["WEIGHT", "SEX"]
 
 [settings.train]
 pre_train_epoch = 10
-train_epoch = 10
+train_epoch = 100
 finetune_epoch = 10
-weight_decay = 0
+weight_decay = 0.1
 learning_rate = 1e-3
 
 [settings.nn]

@@ -1,11 +1,7 @@
 # pyright: reportPrivateImportUsage=false
 
-import os
-import time
-
 import torch
 import torch.nn as nn
-from torch.types import Device
 from tqdm.auto import tqdm
 
 import utils
@@ -35,8 +31,18 @@ def train(
             optimizer.zero_grad()
 
             pred = utils.solve_multi_dose_ode(data, patient, model, include_cov)
+
+            p_data = data.get_patient_data(patient)
+            p_times = p_data["times"]
+            p_admin_times = p_data["admin_times"]
+
+            # Target only observations after the first dose
+            # to match the behavior of solve_multi_dose_ode
+            mask = p_times > p_admin_times[0]
+            target_vals = p_data["conc"][mask]
+
             target = torch.tensor(
-                data.get_patient_data(patient)["conc"],
+                target_vals,
                 device=device,
                 dtype=torch.float32,
             ).view(-1, 1)
@@ -44,7 +50,7 @@ def train(
             loss = MSE(pred, target)
             loss.backward()
 
-            # Gradient clipping to prevent exploding gradients (aka losses going crazy)
+            # Gradient clipping to prevent gradient/losses going crazy
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.1)
 
             optimizer.step()

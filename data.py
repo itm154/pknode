@@ -1,13 +1,10 @@
 # pyright: reportAttributeAccessIssue=false
 
 import pandas as pd
-import torch
-from torch import Tensor
+
 
 # Data/Dataset is based on the Monolix Format
 # https://monolixsuite.slp-software.com/monolix/2024R1/data-format
-
-
 class PKData:
     """
     Class to create the data from the file
@@ -16,24 +13,46 @@ class PKData:
     def __init__(self, data_file: str, col_mapping: dict):
         self.df = pd.read_csv(data_file)
         self.cols = col_mapping
-        self.patients = self.df[self.cols["id"]].unique()
 
-        # Pre-filter to separate observations and administrations
-        self.obs_df = self.df[self.df[self.cols["evid"]] == 0]
-        self.admin_df = self.df[self.df[self.cols["evid"]] == 1]
+        # Convert any "." in dataset to NaN
+        for col in [
+            self.cols.get("dose"),
+            self.cols.get("conc"),
+            self.cols.get("time"),
+        ]:
+            if col and col in self.df.columns:
+                self.df[col] = pd.to_numeric(self.df[col], errors="coerce")
+
+        # If EVID is missing, infer our own
+        # If amount > 0 then it is an administration (1)
+        # Rows where DV != NaN is an observation
+        if "evid" not in self.cols or self.cols["evid"] not in self.df.columns:
+            self.df["EVID_INFERRED"] = 0
+            self.df.loc[self.df[self.cols["dose"]] > 0, "EVID_INFERRED"] = 1
+            self.evid_col = "EVID_INFERRED"
+        else:
+            self.evid_col = self.cols["evid"]
+
+        self.patients = self.df[self.cols["id"]].unique()
+        self.obs_df = self.df[self.df[self.evid_col] == 0]
+        self.admin_df = self.df[self.df[self.evid_col] == 1]
 
     def get_patient_data(self, patient_id) -> dict:
         """
         Extracts time, concentration, doses, and covariates for a single patient
         """
-        p_obs = self.obs_df[self.obs_df[self.cols["id"]] == patient_id]
-        p_admin = self.admin_df[self.admin_df[self.cols["id"]] == patient_id]
+        p_obs = self.obs_df[self.obs_df[self.cols["id"]] == patient_id].copy()
+        p_admin = self.admin_df[self.admin_df[self.cols["id"]] == patient_id].copy()
+
+        # Handle duplicate observation times (e.g., if PD data is also present)
+        # Keep only the first record for each time point to avoid odeint errors
+        p_obs = p_obs.drop_duplicates(subset=[self.cols["time"]])  # pyright: ignore
 
         data = {
-            "times": p_obs[self.cols["time"]].values,
-            "conc": p_obs[self.cols["conc"]].values,
-            "admin_times": p_admin[self.cols["time"]].values,
-            "doses": p_admin[self.cols["dose"]].values,
+            "times": p_obs[self.cols["time"]].values.astype(float),
+            "conc": p_obs[self.cols["conc"]].values.astype(float),
+            "admin_times": p_admin[self.cols["time"]].values.astype(float),
+            "doses": p_admin[self.cols["dose"]].values.astype(float),
         }
 
         if "covariates" in self.cols:
