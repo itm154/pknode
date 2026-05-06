@@ -1,8 +1,8 @@
 # pyright: reportPrivateImportUsage=false
 # pyright: reportArgumentType=false
 
-import tomllib
 import os
+import tomllib
 
 import torch
 from torchdiffeq import odeint
@@ -46,12 +46,15 @@ def solve_multi_dose_ode(data: PKData, patient, node: PKNODE, include_cov: bool)
         t_start = admin_times[j]
         t_end = admin_times[j + 1] if j < len(admin_times) - 1 else times[-1] + 0.01
 
-        mask = (times >= t_start) & (times < t_end)
+        mask = (times > t_start) & (times <= t_end)
         t_obs = times[mask]
 
         t_vector = torch.cat([t_start.unsqueeze(0), t_obs])
-        if j < len(admin_times) - 1:
-            t_vector = torch.cat([t_vector, t_end.unsqueeze(0)])
+
+        # Ensure there is atleast two points for integration
+        if j < len(admin_times) - 1 or len(t_obs) == 0:
+            if t_end > t_start:
+                t_vector = torch.cat([t_vector, t_end.unsqueeze(0)])
 
         dose = doses[j]
         node.z0 = (dose / V).view(1)
