@@ -17,13 +17,19 @@ def train(
     weight_decay: float,
     include_cov: bool = False,
 ):
+    # Find out which device the model is located in so we can use it for other things
     device = next(model.parameters()).device
+
     optimizer = torch.optim.Adam(
         model.parameters(), lr=learning_rate, weight_decay=weight_decay
     )
     MSE = nn.MSELoss()
     losses = []
 
+    # Train for N epochs, each epoch we go through M patients
+    # Everything here is largely unchanged from pharmacoNODE
+    # other than changes to how the patient data is handled
+    # Read: https://medium.com/@sahin.samia/train-a-neural-network-in-pytorch-a-complete-beginners-walkthrough-3897d18d6078
     for epoch in range(epochs):
         pbar = tqdm(data.patients, desc=f"Epoch {epoch + 1}/{epochs}")
         epoch_losses = []
@@ -69,6 +75,7 @@ if __name__ == "__main__":
     config = utils.getConfig()
 
     # Model initialization
+    # Get configuration from config.toml file
     nn_settings = config["settings"]["nn"]
     dim_c = nn_settings["dim_c"]
     if nn_settings["include_covariates"]:
@@ -80,18 +87,21 @@ if __name__ == "__main__":
         model = PKNODE(dim_c)
         include_cov = False
 
+    # Tru to use GPU/CUDA if available
     device = (
         torch.accelerator.current_accelerator().type  # pyright: ignore
         if torch.accelerator.is_available()
         else "cpu"
     )
-    model.to(device)
+    model.to(device)  # Move model to device
 
     print(model)
     print(f"Using {device} device")
 
+    # Initialize data (use config.toml to define dataset)
     data = PKData(config["data"]["file"], config["data"]["columns"])
 
+    # Train model
     train_settings = config["settings"]["train"]
     train(
         model,
@@ -102,5 +112,6 @@ if __name__ == "__main__":
         include_cov=include_cov,
     )
 
+    # Save model
     model_settings = config["model"]
     utils.save_model(model, model_settings["name"], model_settings["path"])

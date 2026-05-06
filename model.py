@@ -6,6 +6,7 @@ import torch.nn as nn
 from torch import Tensor
 
 
+# Read: https://medium.com/@sahin.samia/train-a-neural-network-in-pytorch-a-complete-beginners-walkthrough-3897d18d6078
 class PKNODE(nn.Module):
     """
     NODE model definition for PK/PD
@@ -22,6 +23,8 @@ class PKNODE(nn.Module):
         # Check if covariates are used
         self.include_covariates = dim_V is not None
         self.dim_cov = dim_cov
+
+        # Define the layers of the neural network
 
         # Dynamics network
         # Approximates dc(t)/dt
@@ -55,6 +58,8 @@ class PKNODE(nn.Module):
         """
         Forward Pass
         """
+
+        # Just to supress torch's warning
         if not isinstance(t, torch.Tensor):
             t_tensor = torch.tensor([t], device=z.device, dtype=z.dtype)
         else:

@@ -23,9 +23,13 @@ def getConfig() -> dict:
 
 
 def solve_multi_dose_ode(data: PKData, patient, node: PKNODE, include_cov: bool):
-    # Determine the device from the model
+    """
+    Solve the ODE for a patient using the Neural Network model
+    """
+    # Determine which device the model is using
     device = next(node.parameters()).device
 
+    # Get the specific patient's data
     p_data = data.get_patient_data(patient)
     times = torch.tensor(p_data["times"], dtype=torch.float32, device=device)
     admin_times = torch.tensor(
@@ -67,7 +71,7 @@ def solve_multi_dose_ode(data: PKData, patient, node: PKNODE, include_cov: bool)
             conc_init,
             t_vector - t_vector[0],
             method="dopri5",
-            atol=1e-3,  # Speed up training by loosening tolerance
+            atol=1e-3,  # Speed up training by loosening error tolerance
             rtol=1e-3,
         )
 
@@ -81,6 +85,9 @@ def solve_multi_dose_ode(data: PKData, patient, node: PKNODE, include_cov: bool)
 
 
 def save_model(model: PKNODE, name: str, path: str):
+    """
+    Saves a model with a specified name and path
+    """
     full_path = os.path.join(path, f"{name}.pth")
     os.makedirs(path, exist_ok=True)
     torch.save(model.state_dict(), full_path)
