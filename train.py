@@ -1,7 +1,9 @@
 # pyright: reportPrivateImportUsage=false
+# pyright: reportPossiblyUnboundVariable=false
 
 import torch
 import torch.nn as nn
+from torch.optim.lr_scheduler import StepLR
 from tqdm.auto import tqdm
 
 import utils
@@ -16,6 +18,8 @@ def train(
     learning_rate: float,
     weight_decay: float,
     include_cov: bool = False,
+    step_size: int | None = None,
+    gamma: float | None = None,
 ):
     # Find out which device the model is located in so we can use it for other things
     device = next(model.parameters()).device
@@ -23,6 +27,11 @@ def train(
     optimizer = torch.optim.Adam(
         model.parameters(), lr=learning_rate, weight_decay=weight_decay
     )
+
+    use_scheduler = True if step_size and gamma is not None else False
+    if use_scheduler:
+        scheduler = StepLR(optimizer, step_size, gamma)  # pyright: ignore
+
     MSE = nn.MSELoss()
     losses = []
 
@@ -62,7 +71,16 @@ def train(
             optimizer.step()
             loss_val = loss.item()
             epoch_losses.append(loss_val)
-            pbar.set_postfix({"loss": f"{loss_val:.2e}"})
+            pbar.set_postfix(
+                {
+                    "loss": f"{loss_val:.2e}",
+                    "lr": f"{scheduler.get_last_lr() if use_scheduler else learning_rate}",
+                }
+            )
+
+        if use_scheduler:
+            pbar.set_postfix()
+            scheduler.step()
 
         avg_loss = sum(epoch_losses) / len(epoch_losses)
         losses.extend(epoch_losses)
@@ -99,18 +117,30 @@ if __name__ == "__main__":
     print(f"Using {device} device")
 
     # Initialize data (use config.toml to define dataset)
-    data = PKData(config["data"]["file"], config["data"]["columns"])
+    data = PKData(config["data"]["train_file"], config["data"]["columns"])
 
     # Train model
     train_settings = config["settings"]["train"]
-    train(
-        model,
-        data,
-        epochs=train_settings["train_epoch"],
-        learning_rate=train_settings["learning_rate"],
-        weight_decay=train_settings["weight_decay"],
-        include_cov=include_cov,
-    )
+    if train_settings["use_scheduler"]:
+        train(
+            model,
+            data,
+            epochs=train_settings["epoch"],
+            learning_rate=train_settings["learning_rate"],
+            weight_decay=train_settings["weight_decay"],
+            include_cov=include_cov,
+            step_size=train_settings["step_size"],
+            gamma=train_settings["gamma"],
+        )
+    else:
+        train(
+            model,
+            data,
+            epochs=train_settings["epoch"],
+            learning_rate=train_settings["learning_rate"],
+            weight_decay=train_settings["weight_decay"],
+            include_cov=include_cov,
+        )
 
     # Save model
     model_settings = config["model"]
