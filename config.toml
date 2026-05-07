@@ -3,7 +3,8 @@ name = "tobramycin"
 path = "./models"
 
 [data]
-file = "./data/tobramycin.csv"
+train_file = "./data/tobramycin_train.csv"
+test_file = "./data/tobramycin_test.csv"
 inc_cov = true
 
 [data.columns]
@@ -15,11 +16,12 @@ evid = "EVID"
 covariates = ["AGE", "SEX", "CLCR"]
 
 [settings.train]
-pre_train_epoch = 10
-train_epoch = 10
-finetune_epoch = 10
-weight_decay = 0
+epoch = 60
+weight_decay = 1e-3
 learning_rate = 1e-3
+use_scheduler = true
+step_size = 15
+gamma = 0.1
 
 [settings.nn]
 dim_c = [20, 20, 20]
