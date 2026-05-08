@@ -5,6 +5,7 @@ import os
 import tomllib
 
 import torch
+from torch import Tensor
 from torchdiffeq import odeint
 
 from data import PKData
@@ -22,7 +23,12 @@ def getConfig() -> dict:
         return {}
 
 
-def solve_multi_dose_ode(data: PKData, patient, node: PKNODE, include_cov: bool):
+def solve_multi_dose_ode(
+    data: PKData,
+    patient,
+    node: PKNODE,
+    include_cov: bool,
+):
     """
     Solve the ODE for a patient using the Neural Network model
     """
@@ -61,7 +67,7 @@ def solve_multi_dose_ode(data: PKData, patient, node: PKNODE, include_cov: bool)
                 t_vector = torch.cat([t_vector, t_end.unsqueeze(0)])
 
         dose = doses[j]
-        node.z0 = (dose / V).view(1)
+        node.z0 = (dose / V).view(1)  # pyright: ignore
         node.n_admin = torch.tensor([j + 1.0], device=device)
 
         conc_init = last_conc + node.z0  # pyright: ignore
@@ -82,6 +88,75 @@ def solve_multi_dose_ode(data: PKData, patient, node: PKNODE, include_cov: bool)
             sol_tot = torch.cat([sol_tot, sol[1:]])
 
     return sol_tot
+
+
+def solve_multi_dose_ode_at_t(
+    data: PKData,
+    patient_id: int,
+    model: PKNODE,
+    include_cov: bool,
+    t_eval: Tensor,
+):
+    """
+    Solve the ODE at time t_eval
+    """
+    device = next(model.parameters()).device
+    p_data = data.get_patient_data(patient_id)
+    admin_times = torch.tensor(
+        p_data["admin_times"], dtype=torch.float32, device=device
+    )
+    doses = torch.tensor(p_data["doses"], dtype=torch.float32, device=device)
+
+    if include_cov:
+        model.v = torch.tensor(p_data["covariates"], dtype=torch.float32, device=device)
+        V = model.net_V(model.v)
+    else:
+        V = model.V_param
+
+    last_conc = torch.tensor([0.0], device=device)
+    all_t = []
+    all_sol = []
+
+    for j in range(len(admin_times)):
+        t_start = admin_times[j]
+        t_end = admin_times[j + 1] if j < len(admin_times) - 1 else t_eval[-1]
+
+        mask = (t_eval >= t_start) & (t_eval <= t_end)
+        t_interval = t_eval[mask]
+
+        if len(t_interval) == 0:
+            t_vec = torch.tensor([t_start, t_end], device=device)
+        else:
+            t_vec = torch.cat([t_start.unsqueeze(0), t_interval])
+            if t_vec[-1] < t_end:
+                t_vec = torch.cat([t_vec, t_end.unsqueeze(0)])
+
+        if len(t_vec) > 1 and t_vec[1] == t_vec[0]:
+            t_vec = torch.cat([t_vec[0:1], t_vec[2:]])
+
+        dose = doses[j]
+        model.z0 = (dose / V).view(1)  # pyright:ignore
+        model.n_admin = torch.tensor([j + 1.0], device=device)
+        conc_init = last_conc + model.z0  # pyright: ignore
+
+        sol = odeint(
+            model,
+            conc_init,
+            t_vec - t_vec[0],
+            method="dopri5",
+            atol=1e-5,
+            rtol=1e-5,
+        )
+
+        if len(t_interval) > 0:
+            start_idx = 0 if t_interval[0] == t_start else 1
+            end_idx = start_idx + len(t_interval)
+            all_sol.append(sol[start_idx:end_idx])
+            all_t.append(t_interval)
+
+        last_conc = sol[-1]
+
+    return torch.cat(all_t), torch.cat(all_sol)
 
 
 def save_model(model: PKNODE, name: str, path: str):

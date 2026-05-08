@@ -1,15 +1,19 @@
 # pyright: reportPrivateImportUsage=false
+import argparse
 import os
 
 import matplotlib.pyplot as plt
 import torch
-from torchdiffeq import odeint
 
 import utils
 from data import PKData
 from model import PKNODE
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-p", type=int, help="The patient ID", required=True)
+    args = parser.parse_args()
+
     config = utils.getConfig()
 
     # Model initialization
@@ -43,4 +47,34 @@ if __name__ == "__main__":
     model.load_state_dict(weights)
     model.eval()
 
-    # Todo...
+    data = PKData(config["data"]["test_file"], config["data"]["columns"])
+    p_data = data.get_patient_data(args.p)
+
+    p_times = list(p_data["times"]) + list(p_data["admin_times"])
+    t_start = min(p_times)
+    t_end = max(p_times)
+
+    # Add a small buffer (e.g., 5%) to the end for better visualization
+    t_end = t_end * 1.05
+
+    t_eval = torch.linspace(t_start, t_end, 150, device=device)
+
+    with torch.no_grad():
+        t, sol = utils.solve_multi_dose_ode_at_t(
+            data, args.p, model, include_cov, t_eval
+        )
+
+    plt.figure(figsize=(10, 6))
+    plt.scatter(
+        p_data["times"], p_data["conc"], color="red", label="Ground Truth", zorder=5
+    )
+
+    # Model prediction as a line
+    plt.plot(t.cpu(), sol.cpu(), label="PKNODE Prediction", color="blue")
+    plt.plot(t.cpu(), sol.cpu())
+    plt.xlabel("Time")
+    plt.ylabel("Concentration")
+    plt.title(f"Patient Drug Concentration Prediction for ID: {args.p}")
+    plt.grid(True, alpha=0.3)
+    plt.legend()
+    plt.show()

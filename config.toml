@@ -1,5 +1,5 @@
 [model]
-name = "tobramycin"
+name = "tobramycini_e100_sched"
 path = "./models"
 
 [data]
@@ -16,11 +16,11 @@ evid = "EVID"
 covariates = ["AGE", "SEX", "CLCR"]
 
 [settings.train]
-epoch = 60
+epoch = 100
 weight_decay = 1e-3
 learning_rate = 1e-3
 use_scheduler = true
-step_size = 15
+step_size = 10
 gamma = 0.1
 
 [settings.nn]
