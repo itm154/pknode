@@ -5,7 +5,6 @@ path = "./models"
 [data]
 train_file = "./data/tobramycin_train.csv"
 test_file = "./data/tobramycin_test.csv"
-inc_cov = true
 
 [data.columns]
 id = "ID"
