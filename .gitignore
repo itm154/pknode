@@ -11,3 +11,8 @@ wheels/
 
 # Models
 *.pth
+
+# Plots
+*.png
+*.jpg
+*.jpeg

@@ -33,7 +33,7 @@ class PKNODE(nn.Module):
         in_dim = input_c
         for dim in dim_c:
             layers_c.append(nn.Linear(in_dim, dim))
-            layers_c.append(nn.Softplus())
+            layers_c.append(nn.SiLU())
             in_dim = dim
 
         layers_c.append(nn.Linear(in_dim, 1))
@@ -46,7 +46,7 @@ class PKNODE(nn.Module):
             if dim_V:
                 for dim in dim_V:
                     layers_V.append(nn.Linear(in_dim_V, dim))
-                    layers_V.append(nn.Softplus())
+                    layers_V.append(nn.SiLU())
                     in_dim_V = dim
 
             layers_V.append(nn.Linear(in_dim_V, 1))
@@ -57,6 +57,22 @@ class PKNODE(nn.Module):
             self.V_param_internal = nn.Parameter(
                 torch.as_tensor([1.0], dtype=torch.float32)
             )
+
+        self._initialize_weights()
+
+    def _initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.orthogonal_(m.weight, gain=0.1)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+
+        nn.init.zeros_(self.net_c[-1].weight)
+        nn.init.zeros_(self.net_c[-1].bias)
+
+        if self.include_covariates:
+            nn.init.zeros_(self.net_V[-2].weight)
+            nn.init.zeros_(self.net_V[-2].bias)
 
     @property
     def V_param(self):
@@ -75,10 +91,13 @@ class PKNODE(nn.Module):
         else:
             t_tensor = t.view(1)
 
+        # Ensure concentration doesn't go negative
+        z_safe = torch.clamp(z, min=0.0)
+
         # Feature concatenation for the dynamics function
         if self.include_covariates:
-            x = torch.cat([z, t_tensor, self.z0, self.n_admin, self.v])
+            x = torch.cat([z_safe, t_tensor, self.z0, self.n_admin, self.v])
         else:
-            x = torch.cat([z, t_tensor, self.z0, self.n_admin])
+            x = torch.cat([z_safe, t_tensor, self.z0, self.n_admin])
 
         return self.net_c(x)

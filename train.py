@@ -1,6 +1,8 @@
 # pyright: reportPrivateImportUsage=false
 # pyright: reportPossiblyUnboundVariable=false
 
+import argparse
+
 import torch
 import torch.nn as nn
 from torch.optim.lr_scheduler import StepLR
@@ -24,7 +26,7 @@ def train(
     # Find out which device the model is located in so we can use it for other things
     device = next(model.parameters()).device
 
-    optimizer = torch.optim.Adam(
+    optimizer = torch.optim.AdamW(
         model.parameters(), lr=learning_rate, weight_decay=weight_decay
     )
 
@@ -35,24 +37,21 @@ def train(
     MSE = nn.MSELoss()
     losses = []
 
+    accumulation_steps = 4  # Accumulate gradients over 4 patients
+
     # Train for N epochs, each epoch we go through M patients
-    # Everything here is largely unchanged from pharmacoNODE
-    # other than changes to how the patient data is handled
-    # Read: https://medium.com/@sahin.samia/train-a-neural-network-in-pytorch-a-complete-beginners-walkthrough-3897d18d6078
     for epoch in range(epochs):
         pbar = tqdm(data.patients, desc=f"Epoch {epoch + 1}/{epochs}")
         epoch_losses = []
-        for patient in pbar:
-            optimizer.zero_grad()
+        optimizer.zero_grad()
 
+        for i, patient in enumerate(pbar):
             pred = utils.solve_multi_dose_ode(data, patient, model, include_cov)
 
             p_data = data.get_patient_data(patient)
             p_times = p_data["times"]
             p_admin_times = p_data["admin_times"]
 
-            # Target only observations after the first dose
-            # to match the behavior of solve_multi_dose_ode
             mask = p_times > p_admin_times[0]
             target_vals = p_data["conc"][mask]
 
@@ -63,23 +62,24 @@ def train(
             ).view(-1, 1)
 
             loss = MSE(pred, target)
+
             loss.backward()
 
-            # Gradient clipping to prevent gradient/losses going crazy
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.1)
+            if (i + 1) % accumulation_steps == 0 or (i + 1) == len(data.patients):
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.1)
+                optimizer.step()
+                optimizer.zero_grad()
 
-            optimizer.step()
-            loss_val = loss.item()
+            loss_val = loss.item() * accumulation_steps
             epoch_losses.append(loss_val)
             pbar.set_postfix(
                 {
                     "loss": f"{loss_val:.2e}",
-                    "lr": f"{scheduler.get_last_lr() if use_scheduler else learning_rate}",
+                    "lr": f"{scheduler.get_last_lr()[0] if use_scheduler else learning_rate:.2e}",
                 }
             )
 
         if use_scheduler:
-            pbar.set_postfix()
             scheduler.step()
 
         avg_loss = sum(epoch_losses) / len(epoch_losses)
@@ -90,7 +90,13 @@ def train(
 
 
 if __name__ == "__main__":
-    config = utils.getConfig()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-c", "--config", type=str, help="The config file to use", default="config.toml"
+    )
+    args = parser.parse_args()
+
+    config = utils.getConfig(args.config)
 
     # Model initialization
     # Get configuration from config.toml file
@@ -121,27 +127,22 @@ if __name__ == "__main__":
 
     # Train model
     train_settings = config["settings"]["train"]
-    if train_settings["use_scheduler"]:
-        train(
-            model,
-            data,
-            epochs=train_settings["epoch"],
-            learning_rate=train_settings["learning_rate"],
-            weight_decay=train_settings["weight_decay"],
-            include_cov=include_cov,
-            step_size=train_settings["step_size"],
-            gamma=train_settings["gamma"],
-        )
-    else:
-        train(
-            model,
-            data,
-            epochs=train_settings["epoch"],
-            learning_rate=train_settings["learning_rate"],
-            weight_decay=train_settings["weight_decay"],
-            include_cov=include_cov,
-        )
+    train(
+        model,
+        data,
+        epochs=train_settings["epoch"],
+        learning_rate=train_settings["learning_rate"],
+        weight_decay=train_settings["weight_decay"],
+        include_cov=include_cov,
+        step_size=train_settings.get("step_size"),
+        gamma=train_settings.get("gamma"),
+    )
 
     # Save model
-    model_settings = config["model"]
-    utils.save_model(model, model_settings["name"], model_settings["path"])
+    utils.save_model(
+        model,
+        config["model"]["name"],
+        "./models",
+        cov_means=data.cov_means if hasattr(data, "cov_means") else None,  # pyright: ignore
+        cov_stds=data.cov_stds if hasattr(data, "cov_stds") else None,  # pyright: ignore
+    )
