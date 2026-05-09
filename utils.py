@@ -12,12 +12,12 @@ from data import PKData
 from model import PKNODE
 
 
-def getConfig() -> dict:
+def getConfig(file: str) -> dict:
     """
     Get configuration from config.toml
     """
     try:
-        with open("config.toml", "rb") as f:
+        with open(file, "rb") as f:
             return tomllib.load(f)
     except FileNotFoundError:
         return {}
@@ -159,11 +159,22 @@ def solve_multi_dose_ode_at_t(
     return torch.cat(all_t), torch.cat(all_sol)
 
 
-def save_model(model: PKNODE, name: str, path: str):
+def save_model(
+    model: PKNODE,
+    name: str,
+    path: str,
+    cov_means: list | None = None,
+    cov_stds: list | None = None,
+):
     """
-    Saves a model with a specified name and path
+    Saves a model with a specified name and path, including scaling parameters
     """
     full_path = os.path.join(path, f"{name}.pth")
     os.makedirs(path, exist_ok=True)
-    torch.save(model.state_dict(), full_path)
+    state = {
+        "model_state_dict": model.state_dict(),
+        "cov_means": cov_means,
+        "cov_stds": cov_stds,
+    }
+    torch.save(state, full_path)
     print(f"Model saved to {full_path}")
