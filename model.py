@@ -28,7 +28,7 @@ class PKNODE(nn.Module):
 
         # Dynamics network
         # Approximates dc(t)/dt
-        input_c = 4 + dim_cov if self.include_covariates else 4
+        input_c = 2 + dim_cov if self.include_covariates else 2
         layers_c = []
         in_dim = input_c
         for dim in dim_c:
@@ -96,8 +96,8 @@ class PKNODE(nn.Module):
 
         # Feature concatenation for the dynamics function
         if self.include_covariates:
-            x = torch.cat([z_safe, t_tensor, self.z0, self.n_admin, self.v])
+            x = torch.cat([z_safe, t_tensor, self.v])
         else:
-            x = torch.cat([z_safe, t_tensor, self.z0, self.n_admin])
+            x = torch.cat([z_safe, t_tensor])
 
-        return self.net_c(x)
+        return -torch.nn.functional.softplus(self.net_c(x)) * z_safe
