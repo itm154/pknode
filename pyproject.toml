@@ -11,3 +11,13 @@ dependencies = [
   "torchdiffeq>=0.2.5",
   "tqdm>=4.67.3",
 ]
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu130" }
+torchvision = { index = "pytorch-cu130" }
+torchaudio = { index = "pytorch-cu130" }

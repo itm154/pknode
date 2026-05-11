@@ -112,6 +112,8 @@ if __name__ == "__main__":
         include_cov = False
 
     # Tru to use GPU/CUDA if available
+    print(f"PyTorch version: {torch.__version__}")
+    print(f"CUDA available: {torch.cuda.is_available()}")
     device = (
         torch.accelerator.current_accelerator().type  # pyright: ignore
         if torch.accelerator.is_available()
