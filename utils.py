@@ -144,8 +144,8 @@ def solve_multi_dose_ode_at_t(
             conc_init,
             t_vec - t_vec[0],
             method="dopri5",
-            atol=1e-5,
-            rtol=1e-5,
+            atol=1e-8,
+            rtol=1e-8,
         )
 
         if len(t_interval) > 0:

@@ -1,9 +1,12 @@
 # pyright: reportPrivateImportUsage=false
+import shutil
 import argparse
 import os
 
 import matplotlib.pyplot as plt
 import torch
+from torch.nn import MSELoss
+from tqdm import tqdm
 
 import utils
 from data import PKData
@@ -12,10 +15,10 @@ from model import PKNODE
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "-p", "--patient", type=int, help="The patient ID", required=True
+        "-c", "--config", type=str, help="The config file", default="config.toml"
     )
     parser.add_argument(
-        "-c", "--config", type=str, help="The config file", default="config.toml"
+        "--save-plots", action="store_true", help="Save plots for all patients"
     )
     args = parser.parse_args()
 
@@ -59,32 +62,76 @@ if __name__ == "__main__":
         cov_means=cov_means,
         cov_stds=cov_stds,
     )
-    p_data = data.get_patient_data(args.patient)
 
-    p_times = list(p_data["times"]) + list(p_data["admin_times"])
-    t_start = min(p_times)
-    t_end = max(p_times)
+    MSE = MSELoss()
+    all_losses = []
 
-    t_eval = torch.linspace(t_start, t_end, 500, device=device)
-
-    with torch.no_grad():
-        t, sol = utils.solve_multi_dose_ode_at_t(
-            data, args.patient, model, include_cov, t_eval
-        )
-
-    plt.figure(figsize=(10, 6))
-    plt.plot(t.cpu(), sol.cpu(), label="PKNODE Prediction")
-    plt.scatter(p_data["times"], p_data["conc"], color="red", label="Ground Truth")
-    for admin_time in p_data["admin_times"]:
-        plt.axvline(x=admin_time, color="gray", linestyle="--", alpha=0.5)
-    plt.xlabel("Time")
-    plt.ylabel("Concentration")
-    plt.title(f"Patient Drug Concentration Prediction for ID: {args.patient}")
-    plt.legend()
-
-    if not os.path.exists("./plots"):
+    if args.save_plots and os.path.exists("./plots"):
+        shutil.rmtree("./plots")
+        os.makedirs("./plots")
+    elif args.save_plots and not os.path.exists("./plots"):
         os.makedirs("./plots")
 
-    plots_path = os.path.join("./plots", f"{args.patient}.png")
-    print(f"Plot for Patient ID {args.patient} saved to {plots_path}")
-    plt.savefig(plots_path)
+    print(f"Evaluating {len(data.patients)} patients...")
+
+    for patient in tqdm(data.patients):
+        p_data = data.get_patient_data(patient)
+        p_times = p_data["times"]
+        p_admin_times = p_data["admin_times"]
+
+        with torch.no_grad():
+            pred = utils.solve_multi_dose_ode(data, patient, model, include_cov)
+
+            # Filter out observations before first dose if any
+            mask = p_times > p_admin_times[0]
+            target_vals = p_data["conc"][mask]
+
+            target = torch.tensor(
+                target_vals,
+                device=device,
+                dtype=torch.float32,
+            ).view(-1, 1)
+
+            if target.shape[0] > 0:
+                loss = MSE(pred, target)
+
+                all_losses.append(loss.item())
+
+        if args.save_plots:
+            p_times_plot = list(p_data["times"]) + list(p_data["admin_times"])
+            t_start = min(p_times_plot)
+            t_end = max(p_times_plot)
+
+            t_eval = torch.linspace(t_start, t_end, 500, device=device)
+
+            with torch.no_grad():
+                t, sol = utils.solve_multi_dose_ode_at_t(
+                    data, patient, model, include_cov, t_eval
+                )
+
+            plt.figure(figsize=(10, 6))
+            plt.plot(t.cpu(), sol.cpu(), label="PKNODE Prediction")
+            plt.scatter(
+                p_data["times"],
+                p_data["conc"],
+                color="red",
+                label="Ground Truth",
+                zorder=5,
+            )
+            for admin_time in p_data["admin_times"]:
+                plt.axvline(x=admin_time, color="gray", linestyle="--", alpha=0.5)
+            plt.xlabel("Time")
+            plt.ylabel("Concentration (mg/l)")
+            plt.title(f"Patient Drug Concentration Prediction for ID: {patient}")
+            plt.legend()
+
+            plots_path = os.path.join("./plots", f"{patient}.png")
+            plt.savefig(plots_path)
+            plt.close()
+
+    if all_losses:
+        avg_mse = sum(all_losses) / len(all_losses)
+        print(f"\nAverage MSE across all patients: {avg_mse:.4e}")
+
+    else:
+        print("\nNo valid observations found for evaluation.")
