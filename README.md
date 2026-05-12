@@ -50,8 +50,8 @@ name = "tobramycin"
 path = "./models"
 
 [data]
-file = "./data/tobramycin.csv"
-inc_cov = true
+train_file = "./data/tobramycin_train.csv"
+test_file = "./data/tobramycin_test.csv"
 
 [data.columns]
 id = "ID"
@@ -62,15 +62,15 @@ evid = "EVID"
 covariates = ["AGE", "SEX", "CLCR"]
 
 [settings.train]
-pre_train_epoch = 10
-train_epoch = 10
-finetune_epoch = 10
-weight_decay = 0
-learning_rate = 1e-3
+epoch = 30
+weight_decay = 1e-4
+learning_rate = 5e-4
+step_size = 10
+gamma = 0.5
 
 [settings.nn]
-dim_c = [20, 20, 20]
-dim_V = [10]
+dim_c = [32, 32, 32]
+dim_V = [16]
 include_covariates = true
 ```
 
@@ -87,9 +87,8 @@ include_covariates = true
 
 #### [data]
 
-- **file**: String. Path to the CSV dataset.
-- **inc_cov**: Boolean. Global flag indicating if the dataset includes covariate
-  columns.
+- **train_file**: String. Path to the CSV training dataset.
+- **test_file**: String. Path to the CSV testing dataset.
 
 #### [data.columns]
 
@@ -107,13 +106,13 @@ include_covariates = true
 
 #### [settings.train]
 
-- **train_epoch**: Integer. Number of times the model iterates through the full
+- **epoch**: Integer. Number of times the model iterates through the full
   dataset during training.
-- **learning_rate**: Float. The step size used by the Adam optimizer.
 - **weight_decay**: Float. L2 regularization factor used to prevent overfitting.
-- **pre_train_epoch**: Integer. Number of epochs for initial synthetic or
-  warm-up training.
-- **finetune_epoch**: Integer. Number of epochs for final model refinement.
+- **learning_rate**: Float. The step size used by the AdamW optimizer.
+- **step_size**: Integer. Step size used by the scheduler.
+- **gamma**: Float. Factor to multiply by with learning rate with every
+  step_size.
 
 #### [settings.nn]
 
@@ -133,6 +132,12 @@ include_covariates = true
 uv run train.py
 # or
 python train.py
+```
+
+Specify configuration to use (default is `config.toml`):
+
+```bash
+uv run train.py --config examples/warfarin.toml
 ```
 
 ## Credits
