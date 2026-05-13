@@ -2,10 +2,11 @@
 # pyright: reportPossiblyUnboundVariable=false
 
 import argparse
+import os
 
 import torch
 import torch.nn as nn
-from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm.auto import tqdm
 
 import utils
@@ -20,8 +21,10 @@ def train(
     learning_rate: float,
     weight_decay: float,
     include_cov: bool = False,
-    step_size: int | None = None,
-    gamma: float | None = None,
+    patience: int = 5,
+    factor: float = 0.5,
+    model_name: str = "model",
+    resume: bool = False,
 ):
     # Find out which device the model is located in so we can use it for other things
     device = next(model.parameters()).device
@@ -30,9 +33,23 @@ def train(
         model.parameters(), lr=learning_rate, weight_decay=weight_decay
     )
 
-    use_scheduler = True if step_size and gamma is not None else False
-    if use_scheduler:
-        scheduler = StepLR(optimizer, step_size, gamma)  # pyright: ignore
+    scheduler = ReduceLROnPlateau(
+        optimizer, mode="min", factor=factor, patience=patience
+    )
+
+    start_epoch = 0
+    checkpoint_path = os.path.join("./models", f"{model_name}_checkpoint.pth")
+    if resume and os.path.exists(checkpoint_path):
+        print(f"Resuming from checkpoint: {checkpoint_path}")
+        checkpoint = torch.load(
+            checkpoint_path, map_location=device, weights_only=False
+        )
+        model.load_state_dict(checkpoint["model_state_dict"])
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        if "scheduler_state_dict" in checkpoint:
+            scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+        start_epoch = checkpoint["epoch"] + 1
+        print(f"Resuming from epoch {start_epoch}")
 
     MSE = nn.MSELoss()
     losses = []
@@ -40,7 +57,7 @@ def train(
     accumulation_steps = 4  # Accumulate gradients over 4 patients
 
     # Train for N epochs, each epoch we go through M patients
-    for epoch in range(epochs):
+    for epoch in range(start_epoch, epochs):
         pbar = tqdm(data.patients, desc=f"Epoch {epoch + 1}/{epochs}")
         epoch_losses = []
         optimizer.zero_grad()
@@ -74,7 +91,7 @@ def train(
                 pbar.set_postfix(
                     {
                         "loss": f"{loss_val:.2e}",
-                        "lr": f"{scheduler.get_last_lr()[0] if use_scheduler else learning_rate:.2e}",
+                        "lr": f"{optimizer.param_groups[0]['lr']:.2e}",
                     }
                 )
 
@@ -83,12 +100,26 @@ def train(
                 optimizer.step()
                 optimizer.zero_grad()
 
-        if use_scheduler:
-            scheduler.step()
+        if epoch_losses:
+            avg_loss = sum(epoch_losses) / len(epoch_losses)
+            losses.extend(epoch_losses)
+            print(f"Epoch {epoch + 1} finished - Avg Loss: {avg_loss:.4e}")
+            scheduler.step(avg_loss)
 
-        avg_loss = sum(epoch_losses) / len(epoch_losses)
-        losses.extend(epoch_losses)
-        print(f"Epoch {epoch + 1} finished - Avg Loss: {avg_loss:.4e}")
+        # Save checkpoint
+        torch.save(
+            {
+                "epoch": epoch,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "scheduler_state_dict": scheduler.state_dict(),
+            },
+            checkpoint_path,
+        )
+
+    # Remove checkpoint after successful training
+    if os.path.exists(checkpoint_path):
+        os.remove(checkpoint_path)
 
     return losses
 
@@ -97,6 +128,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-c", "--config", type=str, help="The config file to use", default="config.toml"
+    )
+    parser.add_argument(
+        "--resume", action="store_true", help="Resume training from last checkpoint"
+    )
+    parser.add_argument(
+        "--load-model", type=str, help="Load an existing model to fine-tune"
     )
     args = parser.parse_args()
 
@@ -125,6 +162,18 @@ if __name__ == "__main__":
     )
     model.to(device)  # Move model to device
 
+    if args.load_model:
+        if os.path.exists(args.load_model):
+            print(f"Loading existing model from {args.load_model}")
+            checkpoint = torch.load(
+                args.load_model, map_location=device, weights_only=False
+            )
+            # Handle both full checkpoints and simple state dicts
+            state_dict = checkpoint.get("model_state_dict", checkpoint)
+            model.load_state_dict(state_dict)
+        else:
+            print(f"Warning: Model file {args.load_model} not found.")
+
     print(model)
     print(f"Using {device} device")
 
@@ -140,8 +189,10 @@ if __name__ == "__main__":
         learning_rate=train_settings["learning_rate"],
         weight_decay=train_settings["weight_decay"],
         include_cov=include_cov,
-        step_size=train_settings.get("step_size"),
-        gamma=train_settings.get("gamma"),
+        patience=train_settings.get("patience", 5),
+        factor=train_settings.get("factor", 0.5),
+        model_name=config["model"]["name"],
+        resume=args.resume,
     )
 
     # Save model

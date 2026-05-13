@@ -18,8 +18,8 @@ covariates = ["AGE", "SEX", "CLCR"]
 epoch = 30
 weight_decay = 1e-4
 learning_rate = 5e-4
-step_size = 10
-gamma = 0.5
+patience = 5
+factor = 0.5
 
 [settings.nn]
 dim_c = [32, 32, 32]
