@@ -61,23 +61,27 @@ def train(
                 dtype=torch.float32,
             ).view(-1, 1)
 
-            loss = MSE(pred, target)
+            if target.numel() > 0:
+                log_pred = torch.log(torch.clamp(pred, min=0) + 1e-7)
+                log_target = torch.log(torch.clamp(target, min=0) + 1e-7)
+                loss = MSE(log_pred, log_target)
 
-            loss.backward()
+                # Scale loss for gradient accumulation
+                (loss / accumulation_steps).backward()
+
+                loss_val = loss.item()
+                epoch_losses.append(loss_val)
+                pbar.set_postfix(
+                    {
+                        "loss": f"{loss_val:.2e}",
+                        "lr": f"{scheduler.get_last_lr()[0] if use_scheduler else learning_rate:.2e}",
+                    }
+                )
 
             if (i + 1) % accumulation_steps == 0 or (i + 1) == len(data.patients):
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.1)
                 optimizer.step()
                 optimizer.zero_grad()
-
-            loss_val = loss.item() * accumulation_steps
-            epoch_losses.append(loss_val)
-            pbar.set_postfix(
-                {
-                    "loss": f"{loss_val:.2e}",
-                    "lr": f"{scheduler.get_last_lr()[0] if use_scheduler else learning_rate:.2e}",
-                }
-            )
 
         if use_scheduler:
             scheduler.step()

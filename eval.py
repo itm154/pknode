@@ -1,7 +1,7 @@
 # pyright: reportPrivateImportUsage=false
-import shutil
 import argparse
 import os
+import shutil
 
 import matplotlib.pyplot as plt
 import torch
@@ -93,7 +93,9 @@ if __name__ == "__main__":
             ).view(-1, 1)
 
             if target.shape[0] > 0:
-                loss = MSE(pred, target)
+                log_pred = torch.log(torch.clamp(pred, min=0) + 1e-7)
+                log_target = torch.log(torch.clamp(target, min=0) + 1e-7)
+                loss = MSE(log_pred, log_target)
 
                 all_losses.append(loss.item())
 
@@ -130,8 +132,8 @@ if __name__ == "__main__":
             plt.close()
 
     if all_losses:
-        avg_mse = sum(all_losses) / len(all_losses)
-        print(f"\nAverage MSE across all patients: {avg_mse:.4e}")
+        avg_msle = sum(all_losses) / len(all_losses)
+        print(f"\nAverage MSLE across all patients: {avg_msle:.4e}")
 
     else:
         print("\nNo valid observations found for evaluation.")
