@@ -1,6 +1,3 @@
-# pyright: reportPrivateImportUsage=false
-# pyright: reportPossiblyUnboundVariable=false
-
 import argparse
 import os
 
@@ -51,7 +48,6 @@ def train(
         start_epoch = checkpoint["epoch"] + 1
         print(f"Resuming from epoch {start_epoch}")
 
-    MSE = nn.MSELoss()
     losses = []
 
     accumulation_steps = 4  # Accumulate gradients over 4 patients
@@ -196,10 +192,13 @@ if __name__ == "__main__":
     )
 
     # Save model
+    models_dir = os.path.join(".", "models")
+    cov_means = getattr(data, "cov_means", None)
+    cov_stds = getattr(data, "cov_stds", None)
     utils.save_model(
         model,
         config["model"]["name"],
-        "./models",
-        cov_means=data.cov_means if hasattr(data, "cov_means") else None,  # pyright: ignore
-        cov_stds=data.cov_stds if hasattr(data, "cov_stds") else None,  # pyright: ignore
+        models_dir,
+        cov_means=cov_means,
+        cov_stds=cov_stds,
     )

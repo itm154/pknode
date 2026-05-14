@@ -1,9 +1,8 @@
-# pyright: reportPrivateImportUsage=false
-# pyright: reportArgumentType=false
-
 import os
 import tomllib
+from typing import Any, Optional, Union
 
+import numpy as np
 import torch
 from torch import Tensor
 from torchdiffeq import odeint
@@ -12,7 +11,7 @@ from data import PKData
 from model import PKNODE
 
 
-def getConfig(file: str) -> dict:
+def getConfig(file: str) -> dict[str, Any]:
     """
     Get configuration from config.toml
     """
@@ -25,10 +24,10 @@ def getConfig(file: str) -> dict:
 
 def solve_multi_dose_ode(
     data: PKData,
-    patient,
+    patient: Any,
     node: PKNODE,
     include_cov: bool,
-):
+) -> Tensor:
     """
     Solve the ODE for a patient using the Neural Network model
     """
@@ -49,6 +48,9 @@ def solve_multi_dose_ode(
     else:
         V = node.V_param
 
+    if V is None:
+        V = torch.tensor([1.0], device=device)
+
     sol_tot = torch.tensor([], device=device)
     last_conc = torch.tensor([0.0], device=device)
 
@@ -67,10 +69,10 @@ def solve_multi_dose_ode(
                 t_vector = torch.cat([t_vector, t_end.unsqueeze(0)])
 
         dose = doses[j]
-        node.z0 = (dose / V).view(1)  # pyright: ignore
+        node.z0 = (dose / V).view(1)
         node.n_admin = torch.tensor([j + 1.0], device=device)
 
-        conc_init = last_conc + node.z0  # pyright: ignore
+        conc_init = last_conc + node.z0
 
         sol = odeint(
             node,
@@ -90,11 +92,11 @@ def solve_multi_dose_ode(
 
 def solve_multi_dose_ode_at_t(
     data: PKData,
-    patient_id: int,
+    patient_id: Any,
     model: PKNODE,
     include_cov: bool,
     t_eval: Tensor,
-):
+) -> tuple[Tensor, Tensor]:
     """
     Solve the ODE at time t_eval
     """
@@ -110,6 +112,9 @@ def solve_multi_dose_ode_at_t(
         V = model.net_V(model.v)
     else:
         V = model.V_param
+
+    if V is None:
+        V = torch.tensor([1.0], device=device)
 
     last_conc = torch.tensor([0.0], device=device)
     all_t = []
@@ -133,9 +138,9 @@ def solve_multi_dose_ode_at_t(
             t_vec = torch.cat([t_vec[0:1], t_vec[2:]])
 
         dose = doses[j]
-        model.z0 = (dose / V).view(1)  # pyright:ignore
+        model.z0 = (dose / V).view(1)
         model.n_admin = torch.tensor([j + 1.0], device=device)
-        conc_init = last_conc + model.z0  # pyright: ignore
+        conc_init = last_conc + model.z0
 
         sol = odeint(
             model,
@@ -161,8 +166,8 @@ def save_model(
     model: PKNODE,
     name: str,
     path: str,
-    cov_means: list | None = None,
-    cov_stds: list | None = None,
+    cov_means: Optional[Union[list[float], np.ndarray]] = None,
+    cov_stds: Optional[Union[list[float], np.ndarray]] = None,
 ):
     """
     Saves a model with a specified name and path, including scaling parameters

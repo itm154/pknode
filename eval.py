@@ -1,4 +1,3 @@
-# pyright: reportPrivateImportUsage=false
 import argparse
 import os
 import shutil

@@ -12,6 +12,9 @@ wheels/
 # Models
 *.pth
 
+# Temporary files
+.temp
+
 # Plots
 *.png
 *.jpg

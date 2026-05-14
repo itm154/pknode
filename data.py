@@ -1,5 +1,6 @@
-# pyright: reportAttributeAccessIssue=false
+from typing import Any, Optional
 
+import numpy as np
 import pandas as pd
 
 
@@ -10,22 +11,25 @@ class PKData:
     Class to create the data from the file
     """
 
+    df: pd.DataFrame
+    obs_df: pd.DataFrame
+    admin_df: pd.DataFrame
+    cov_means: np.ndarray
+    cov_stds: np.ndarray
+
     def __init__(
         self,
         data_file: str,
-        col_mapping: dict,
-        cov_means: list | None = None,
-        cov_stds: list | None = None,
+        col_mapping: dict[str, str],
+        cov_means: Optional[np.ndarray] = None,
+        cov_stds: Optional[np.ndarray] = None,
     ):
         self.df = pd.read_csv(data_file)
         self.cols = col_mapping
 
         # Convert any "." in dataset to NaN
-        for col in [
-            self.cols.get("dose"),
-            self.cols.get("conc"),
-            self.cols.get("time"),
-        ]:
+        for col_key in ["dose", "conc", "time"]:
+            col = self.cols.get(col_key)
             if col and col in self.df.columns:
                 self.df[col] = pd.to_numeric(self.df[col], errors="coerce")
 
@@ -34,7 +38,8 @@ class PKData:
         # Rows where DV != NaN is an observation
         if "evid" not in self.cols or self.cols["evid"] not in self.df.columns:
             self.df["EVID_INFERRED"] = 0
-            self.df.loc[self.df[self.cols["dose"]] > 0, "EVID_INFERRED"] = 1
+            dose_col = self.cols["dose"]
+            self.df.loc[self.df[dose_col] > 0, "EVID_INFERRED"] = 1
             self.evid_col = "EVID_INFERRED"
         else:
             self.evid_col = self.cols["evid"]
@@ -45,16 +50,18 @@ class PKData:
 
         # Scale covariates using z-score (see line 80)
         if "covariates" in self.cols:
+            cov_cols = self.cols["covariates"]
             if cov_means is not None and cov_stds is not None:
                 self.cov_means = cov_means
                 self.cov_stds = cov_stds
             else:
-                self.cov_means = self.df[self.cols["covariates"]].mean().values
-                self.cov_stds = self.df[self.cols["covariates"]].std().values.copy()
+                cov_data = self.df[cov_cols]
+                self.cov_means = cov_data.mean().values
+                self.cov_stds = cov_data.std().values.copy()
                 # Avoid division by zero
-                self.cov_stds[self.cov_stds == 0] = 1.0  # pyright: ignore
+                self.cov_stds[self.cov_stds == 0] = 1.0
 
-    def get_patient_data(self, patient_id) -> dict:
+    def get_patient_data(self, patient_id: Any) -> dict[str, Any]:
         """
         Extracts time, concentration, doses, and covariates for a single patient
         """
@@ -63,9 +70,9 @@ class PKData:
 
         # Handle duplicate observation times (e.g., if PD data is also present)
         # Keep only the first record for each time point to avoid odeint errors
-        p_obs = p_obs.drop_duplicates(subset=[self.cols["time"]])  # pyright: ignore
+        p_obs = p_obs.drop_duplicates(subset=[self.cols["time"]])
 
-        data = {
+        data: dict[str, Any] = {
             "times": p_obs[self.cols["time"]].values.astype(float),
             "conc": p_obs[self.cols["conc"]].values.astype(float),
             "admin_times": p_admin[self.cols["time"]].values.astype(float),
@@ -74,9 +81,11 @@ class PKData:
 
         if "covariates" in self.cols:
             # Assume covariates are static for the patient (take first row)
-            pat_row = self.df[self.df[self.cols["id"]] == patient_id].iloc[0]
-            covs = pat_row[self.cols["covariates"]].values.astype(float)
-            # Apply scaling
-            data["covariates"] = (covs - self.cov_means) / self.cov_stds
+            pat_df = self.df[self.df[self.cols["id"]] == patient_id]
+            if not pat_df.empty:
+                pat_row = pat_df.iloc[0]
+                covs = pat_row[self.cols["covariates"]].values.astype(float)
+                # Apply scaling
+                data["covariates"] = (covs - self.cov_means) / self.cov_stds
 
         return data

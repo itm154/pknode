@@ -1,6 +1,3 @@
-# pyright: reportPrivateImportUsage=false
-# pyright: reportArgumentType=false
-
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -11,6 +8,10 @@ class PKNODE(nn.Module):
     """
     NODE model definition for PK/PD
     """
+
+    z0: Tensor
+    n_admin: Tensor
+    v: Tensor
 
     def __init__(
         self,
@@ -64,15 +65,18 @@ class PKNODE(nn.Module):
         for m in self.modules():
             if isinstance(m, nn.Linear):
                 nn.init.orthogonal_(m.weight, gain=0.1)
-                if m.bias is not None:
-                    nn.init.zeros_(m.bias)
+                nn.init.zeros_(m.bias)
 
-        nn.init.zeros_(self.net_c[-1].weight)
-        nn.init.zeros_(self.net_c[-1].bias)
+        last_layer_c = self.net_c[-1]
+        if isinstance(last_layer_c, nn.Linear):
+            nn.init.zeros_(last_layer_c.weight)
+            nn.init.zeros_(last_layer_c.bias)
 
         if self.include_covariates:
-            nn.init.zeros_(self.net_V[-2].weight)
-            nn.init.zeros_(self.net_V[-2].bias)
+            penultimate_layer_V = self.net_V[-2]
+            if isinstance(penultimate_layer_V, nn.Linear):
+                nn.init.zeros_(penultimate_layer_V.weight)
+                nn.init.zeros_(penultimate_layer_V.bias)
 
     @property
     def V_param(self):
