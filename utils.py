@@ -77,8 +77,6 @@ def solve_multi_dose_ode(
             conc_init,
             t_vector - t_vector[0],
             method="dopri5",
-            atol=1e-5,  # Speed up training by loosening error tolerance
-            rtol=1e-5,
         )
 
         if j < len(admin_times) - 1:

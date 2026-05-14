@@ -4,6 +4,7 @@ import os
 import shutil
 
 import matplotlib.pyplot as plt
+import numpy as np
 import torch
 from torch.nn import MSELoss
 from tqdm import tqdm
@@ -37,7 +38,7 @@ if __name__ == "__main__":
         include_cov = False
 
     device = (
-        torch.accelerator.current_accelerator().type  # pyright: ignore
+        torch.accelerator.current_accelerator()
         if torch.accelerator.is_available()
         else "cpu"
     )
@@ -65,12 +66,15 @@ if __name__ == "__main__":
 
     MSE = MSELoss()
     all_losses = []
+    all_preds = []
+    all_target = []
+    all_times = []
 
-    if args.save_plots and os.path.exists("./plots"):
-        shutil.rmtree("./plots")
-        os.makedirs("./plots")
-    elif args.save_plots and not os.path.exists("./plots"):
-        os.makedirs("./plots")
+    plots_dir = os.path.join(".", "plots")
+    if args.save_plots:
+        if os.path.exists(plots_dir):
+            shutil.rmtree(plots_dir)
+        os.makedirs(plots_dir, exist_ok=True)
 
     print(f"Evaluating {len(data.patients)} patients...")
 
@@ -98,6 +102,9 @@ if __name__ == "__main__":
                 loss = MSE(log_pred, log_target)
 
                 all_losses.append(loss.item())
+                all_preds.extend(pred.cpu().numpy().flatten())
+                all_target.extend(target.cpu().numpy().flatten())
+                all_times.extend(p_times[mask])
 
         if args.save_plots:
             p_times_plot = list(p_data["times"]) + list(p_data["admin_times"])
@@ -122,6 +129,7 @@ if __name__ == "__main__":
             )
             for admin_time in p_data["admin_times"]:
                 plt.axvline(x=admin_time, color="gray", linestyle="--", alpha=0.5)
+
             plt.xlabel("Time")
             plt.ylabel("Concentration (mg/l)")
             plt.title(f"Patient Drug Concentration Prediction for ID: {patient}")
@@ -135,5 +143,37 @@ if __name__ == "__main__":
         avg_msle = sum(all_losses) / len(all_losses)
         print(f"\nAverage MSLE across all patients: {avg_msle:.4e}")
 
+        preds_arr = np.array(all_preds)
+        target_arr = np.array(all_target)
+        times_arr = np.array(all_times)
+        residuals = target_arr - preds_arr
+
+        # Residual plot
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+
+        # Residuals vs Time
+        ax1.scatter(times_arr, residuals, alpha=0.5)
+        ax1.axhline(y=0, color="r", linestyle="--")
+        ax1.set_xlabel("Time (h)")
+        ax1.set_ylabel("Residual (Observed - Predicted)")
+        ax1.set_title("Residuals vs Time")
+
+        # Observed vs Predicted plot
+        ax2.scatter(preds_arr, target_arr, alpha=0.5)
+        lims = [
+            np.min([ax2.get_xlim(), ax2.get_ylim()]),
+            np.max([ax2.get_xlim(), ax2.get_ylim()]),
+        ]
+        ax2.plot(lims, lims, "r--", alpha=0.75, zorder=0)
+        ax2.set_xlabel("Predicted Concentration")
+        ax2.set_ylabel("Observed Concentration")
+        ax2.set_title("Observed vs Predicted")
+
+        plt.tight_layout()
+        os.makedirs(plots_dir, exist_ok=True)
+        residual_plot_path = os.path.join(plots_dir, "residuals.png")
+        plt.savefig(residual_plot_path)
+        print(f"Residual plots saved to {residual_plot_path}")
+        plt.close()
     else:
         print("\nNo valid observations found for evaluation.")

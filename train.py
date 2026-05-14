@@ -156,7 +156,7 @@ if __name__ == "__main__":
     print(f"PyTorch version: {torch.__version__}")
     print(f"CUDA available: {torch.cuda.is_available()}")
     device = (
-        torch.accelerator.current_accelerator().type  # pyright: ignore
+        torch.accelerator.current_accelerator()
         if torch.accelerator.is_available()
         else "cpu"
     )
