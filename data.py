@@ -84,8 +84,8 @@ class PKData:
             pat_df = self.df[self.df[self.cols["id"]] == patient_id]
             if not pat_df.empty:
                 pat_row = pat_df.iloc[0]
-                covs = pat_row[self.cols["covariates"]].values.astype(float)
-                # Apply scaling
-                data["covariates"] = (covs - self.cov_means) / self.cov_stds
+                data["covariates"] = pat_row[self.cols["covariates"]].values.astype(
+                    float
+                )
 
         return data

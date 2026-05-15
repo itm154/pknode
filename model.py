@@ -27,6 +27,15 @@ class PKNODE(nn.Module):
 
         # Define the layers of the neural network
 
+        # Dynamic scales for input normalization
+        self.register_buffer("time_scale", torch.tensor(1.0))
+        self.register_buffer("z0_scale", torch.tensor(1.0))
+        self.register_buffer("admin_scale", torch.tensor(1.0))
+
+        if self.include_covariates:
+            self.register_buffer("cov_means", torch.zeros(dim_cov))
+            self.register_buffer("cov_stds", torch.ones(dim_cov))
+
         # Dynamics network
         # Approximates dc(t)/dt
         input_c = 4 + dim_cov if self.include_covariates else 4
@@ -84,6 +93,15 @@ class PKNODE(nn.Module):
             return torch.nn.functional.softplus(self.V_param_internal)
         return None
 
+    def predict_V(self, v: Tensor | None = None) -> Tensor:
+        """
+        Predict Volume (V)
+        """
+        if self.include_covariates and v is not None:
+            v_scaled = (v - self.cov_means) / (self.cov_stds + 1e-7)
+            return self.net_V(v_scaled)
+        return self.V_param
+
     def forward(self, t: float, z: Tensor) -> Tensor:
         """
         Forward Pass
@@ -98,10 +116,26 @@ class PKNODE(nn.Module):
         # Ensure concentration doesn't go negative
         z_safe = torch.clamp(z, min=0.0)
 
-        # Feature concatenation for the dynamics function
+        # Feature concatenation for the dynamics function with scaling
         if self.include_covariates:
-            x = torch.cat([z_safe, t_tensor, self.z0, self.n_admin, self.v])
+            v_scaled = (self.v - self.cov_means) / (self.cov_stds + 1e-7)
+            x = torch.cat(
+                [
+                    z_safe,
+                    t_tensor / self.time_scale,
+                    self.z0 / self.z0_scale,
+                    self.n_admin / self.admin_scale,
+                    v_scaled,
+                ]
+            )
         else:
-            x = torch.cat([z_safe, t_tensor, self.z0, self.n_admin])
+            x = torch.cat(
+                [
+                    z_safe,
+                    t_tensor / self.time_scale,
+                    self.z0 / self.z0_scale,
+                    self.n_admin / self.admin_scale,
+                ]
+            )
 
         return -torch.nn.functional.softplus(self.net_c(x)) * z_safe

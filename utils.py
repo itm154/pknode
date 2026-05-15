@@ -11,9 +11,9 @@ from data import PKData
 from model import PKNODE
 
 
-def getConfig(file: str) -> dict[str, Any]:
+def getConfig(file: str) -> dict:
     """
-    Get configuration from config.toml
+    Returns dictionary from configuration file
     """
     try:
         with open(file, "rb") as f:
@@ -25,14 +25,14 @@ def getConfig(file: str) -> dict[str, Any]:
 def solve_multi_dose_ode(
     data: PKData,
     patient: Any,
-    node: PKNODE,
+    model: PKNODE,
     include_cov: bool,
 ) -> Tensor:
     """
     Solve the ODE for a patient using the Neural Network model
     """
     # Determine which device the model is using
-    device = next(node.parameters()).device
+    device = next(model.parameters()).device
 
     # Get the specific patient's data
     p_data = data.get_patient_data(patient)
@@ -43,10 +43,10 @@ def solve_multi_dose_ode(
     doses = torch.tensor(p_data["doses"], dtype=torch.float32, device=device)
 
     if include_cov:
-        node.v = torch.tensor(p_data["covariates"], dtype=torch.float32, device=device)
-        V = node.net_V(node.v)
+        model.v = torch.tensor(p_data["covariates"], dtype=torch.float32, device=device)
+        V = model.predict_V(model.v)
     else:
-        V = node.V_param
+        V = model.V_param
 
     if V is None:
         V = torch.tensor([1.0], device=device)
@@ -69,13 +69,13 @@ def solve_multi_dose_ode(
                 t_vector = torch.cat([t_vector, t_end.unsqueeze(0)])
 
         dose = doses[j]
-        node.z0 = (dose / V).view(1)
-        node.n_admin = torch.tensor([j + 1.0], device=device)
+        model.z0 = (dose / V).view(1)
+        model.n_admin = torch.tensor([j + 1.0], device=device)
 
-        conc_init = last_conc + node.z0
+        conc_init = last_conc + model.z0
 
         sol = odeint(
-            node,
+            model,
             conc_init,
             t_vector - t_vector[0],
             method="dopri5",
@@ -108,12 +108,14 @@ def solve_multi_dose_ode_at_t(
     doses = torch.tensor(p_data["doses"], dtype=torch.float32, device=device)
 
     if include_cov:
-        model.v = torch.tensor(p_data["covariates"], dtype=torch.float32, device=device)
-        V = model.net_V(model.v)
+        v = torch.tensor(p_data["covariates"], dtype=torch.float32, device=device)
+        V = model.predict_V(v)
     else:
         V = model.V_param
 
     if V is None:
+        V = torch.tensor([1.0], device=device)
+
         V = torch.tensor([1.0], device=device)
 
     last_conc = torch.tensor([0.0], device=device)
@@ -162,22 +164,12 @@ def solve_multi_dose_ode_at_t(
     return torch.cat(all_t), torch.cat(all_sol)
 
 
-def save_model(
-    model: PKNODE,
-    name: str,
-    path: str,
-    cov_means: Optional[Union[list[float], np.ndarray]] = None,
-    cov_stds: Optional[Union[list[float], np.ndarray]] = None,
-):
+def save_model(model: PKNODE, name: str, path: str):
     """
-    Saves a model with a specified name and path, including scaling parameters
+    Save the model with specified name and path
     """
     full_path = os.path.join(path, f"{name}.pth")
     os.makedirs(path, exist_ok=True)
-    state = {
-        "model_state_dict": model.state_dict(),
-        "cov_means": cov_means,
-        "cov_stds": cov_stds,
-    }
+    state = {"model_state_dict": model.state_dict()}
     torch.save(state, full_path)
     print(f"Model saved to {full_path}")

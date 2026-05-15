@@ -92,7 +92,7 @@ def train(
                 )
 
             if (i + 1) % accumulation_steps == 0 or (i + 1) == len(data.patients):
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.1)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                 optimizer.step()
                 optimizer.zero_grad()
 
@@ -176,6 +176,17 @@ if __name__ == "__main__":
     # Initialize data (use config.toml to define dataset)
     data = PKData(config["data"]["train_file"], config["data"]["columns"])
 
+    # Set dynamic scales in the model
+    model.time_scale.fill_(data.df[data.cols["time"]].max())
+    model.z0_scale.fill_(
+        data.df[data.cols["dose"]].max() / 20.0
+    )  # Normalize by a typical volume
+    model.admin_scale.fill_(data.admin_df.groupby(data.cols["id"]).size().max())
+
+    if include_cov:
+        model.cov_means.copy_(torch.from_numpy(data.cov_means.copy()))
+        model.cov_stds.copy_(torch.from_numpy(data.cov_stds.copy()))
+
     # Train model
     train_settings = config["settings"]["train"]
     train(
@@ -193,12 +204,8 @@ if __name__ == "__main__":
 
     # Save model
     models_dir = os.path.join(".", "models")
-    cov_means = getattr(data, "cov_means", None)
-    cov_stds = getattr(data, "cov_stds", None)
     utils.save_model(
         model,
         config["model"]["name"],
         models_dir,
-        cov_means=cov_means,
-        cov_stds=cov_stds,
     )

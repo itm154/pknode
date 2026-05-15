@@ -51,16 +51,12 @@ if __name__ == "__main__":
 
     checkpoint = torch.load(model_path, weights_only=False, map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
-    cov_means = checkpoint.get("cov_means")
-    cov_stds = checkpoint.get("cov_stds")
 
     model.eval()
 
     data = PKData(
         config["data"]["test_file"],
         config["data"]["columns"],
-        cov_means=cov_means,
-        cov_stds=cov_stds,
     )
 
     MSE = MSELoss()
