@@ -77,7 +77,14 @@ def train(
             if target.numel() > 0:
                 log_pred = torch.log(torch.clamp(pred, min=0) + 1e-7)
                 log_target = torch.log(torch.clamp(target, min=0) + 1e-7)
-                loss = MSE(log_pred, log_target)
+
+                # Weight loss to prioritize higher concentrations
+                weights = (
+                    torch.clamp(target / (target.mean() + 1e-7), min=1.0)
+                    if target.numel() > 1
+                    else torch.ones_like(target)
+                )
+                loss = (weights * (log_pred - log_target) ** 2).mean()
 
                 # Scale loss for gradient accumulation
                 (loss / accumulation_steps).backward()
