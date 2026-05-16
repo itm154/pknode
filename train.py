@@ -2,7 +2,6 @@ import argparse
 import os
 
 import torch
-import torch.nn as nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm.auto import tqdm
 
@@ -35,7 +34,9 @@ def train(
     )
 
     start_epoch = 0
-    checkpoint_path = os.path.join("./models", f"{model_name}_checkpoint.pth")
+    models_dir = "./models"
+    checkpoint_path = os.path.join(models_dir, f"{model_name}_checkpoint.pth")
+
     if resume and os.path.exists(checkpoint_path):
         print(f"Resuming from checkpoint: {checkpoint_path}")
         checkpoint = torch.load(
@@ -59,7 +60,11 @@ def train(
         optimizer.zero_grad()
 
         for i, patient in enumerate(pbar):
-            pred = utils.solve_multi_dose_ode(data, patient, model, include_cov)
+            res = utils.solve_dose_ode(data, patient, model, include_cov)
+            if isinstance(res, tuple):
+                _, pred = res
+            else:
+                pred = res
 
             p_data = data.get_patient_data(patient)
             p_times = p_data["times"]
@@ -75,7 +80,7 @@ def train(
             ).view(-1, 1)
 
             if target.numel() > 0:
-                log_pred = torch.log(torch.clamp(pred, min=0) + 1e-7)
+                log_pred = torch.log(torch.clamp(pred, min=0.0) + 1e-7)
                 log_target = torch.log(torch.clamp(target, min=0) + 1e-7)
 
                 # Weight loss to prioritize higher concentrations
@@ -110,15 +115,13 @@ def train(
             scheduler.step(avg_loss)
 
         # Save checkpoint
-        torch.save(
-            {
-                "epoch": epoch,
-                "model_state_dict": model.state_dict(),
-                "optimizer_state_dict": optimizer.state_dict(),
-                "scheduler_state_dict": scheduler.state_dict(),
-            },
-            checkpoint_path,
-        )
+        checkpoint_state = {
+            "epoch": epoch,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "scheduler_state_dict": scheduler.state_dict(),
+        }
+        utils.save_checkpoint(checkpoint_state, model_name, models_dir)
 
     # Remove checkpoint after successful training
     if os.path.exists(checkpoint_path):
@@ -188,7 +191,6 @@ if __name__ == "__main__":
     model.z0_scale.fill_(
         data.df[data.cols["dose"]].max() / 20.0
     )  # Normalize by a typical volume
-    model.admin_scale.fill_(data.admin_df.groupby(data.cols["id"]).size().max())
 
     if include_cov:
         model.cov_means.copy_(torch.from_numpy(data.cov_means.copy()))

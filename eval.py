@@ -79,7 +79,11 @@ if __name__ == "__main__":
         p_admin_times = p_data["admin_times"]
 
         with torch.no_grad():
-            pred = utils.solve_multi_dose_ode(data, patient, model, include_cov)
+            res = utils.solve_dose_ode(data, patient, model, include_cov)
+            if isinstance(res, tuple):
+                _, pred = res
+            else:
+                pred = res
 
             # Filter out observations before first dose if any
             mask = p_times > p_admin_times[0]
@@ -92,7 +96,7 @@ if __name__ == "__main__":
             ).view(-1, 1)
 
             if target.shape[0] > 0:
-                log_pred = torch.log(torch.clamp(pred, min=0) + 1e-7)
+                log_pred = torch.log(torch.clamp(pred, min=0.0) + 1e-7)
                 log_target = torch.log(torch.clamp(target, min=0) + 1e-7)
                 loss = MSE(log_pred, log_target)
 
@@ -109,8 +113,8 @@ if __name__ == "__main__":
             t_eval = torch.linspace(t_start, t_end, 500, device=device)
 
             with torch.no_grad():
-                t, sol = utils.solve_multi_dose_ode_at_t(
-                    data, patient, model, include_cov, t_eval
+                t, sol = utils.solve_dose_ode(
+                    data, patient, model, include_cov, t_eval=t_eval
                 )
 
             plt.figure(figsize=(10, 6))

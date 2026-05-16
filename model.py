@@ -10,8 +10,11 @@ class PKNODE(nn.Module):
     """
 
     z0: Tensor
-    n_admin: Tensor
     v: Tensor
+    time_scale: Tensor
+    z0_scale: Tensor
+    cov_means: Tensor
+    cov_stds: Tensor
 
     def __init__(
         self,
@@ -30,7 +33,6 @@ class PKNODE(nn.Module):
         # Dynamic scales for input normalization
         self.register_buffer("time_scale", torch.tensor(1.0))
         self.register_buffer("z0_scale", torch.tensor(1.0))
-        self.register_buffer("admin_scale", torch.tensor(1.0))
 
         if self.include_covariates:
             self.register_buffer("cov_means", torch.zeros(dim_cov))
@@ -38,7 +40,7 @@ class PKNODE(nn.Module):
 
         # Dynamics network
         # Approximates dc(t)/dt
-        input_c = 4 + dim_cov if self.include_covariates else 4
+        input_c = 3 + dim_cov if self.include_covariates else 3
         layers_c = []
         in_dim = input_c
         for dim in dim_c:
@@ -124,7 +126,6 @@ class PKNODE(nn.Module):
                     z_safe,
                     t_tensor / self.time_scale,
                     self.z0 / self.z0_scale,
-                    self.n_admin / self.admin_scale,
                     v_scaled,
                 ]
             )
@@ -134,7 +135,6 @@ class PKNODE(nn.Module):
                     z_safe,
                     t_tensor / self.time_scale,
                     self.z0 / self.z0_scale,
-                    self.n_admin / self.admin_scale,
                 ]
             )
 
