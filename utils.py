@@ -44,7 +44,9 @@ def solve_dose_ode(
         V = model.V_param
 
     V = V if V is not None else torch.tensor([1.0], device=device)
-    model.z0 = (dose / V).view(1)
+    z0 = torch.zeros(model.state_dim, device=device)
+    z0[0] = dose / V
+    model.z0 = z0
 
     if t_eval is None:
         times = torch.tensor(p_data["times"], dtype=torch.float32, device=device)

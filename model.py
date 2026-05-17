@@ -21,12 +21,23 @@ class PKNODE(nn.Module):
         dim_c: list[int],
         dim_V: list[int] | None = None,
         dim_cov: int = 0,
+        n_compartments: int = 1,
+        absorption: bool = False,
     ):
         super().__init__()
 
         # Check if covariates are used
         self.include_covariates = dim_V is not None
         self.dim_cov = dim_cov
+        self.n_compartments = n_compartments
+        self.absorption = absorption
+
+        # State dimension: central (+ depot if absorption) (+ peripheral if 2 compartments)
+        self.state_dim = n_compartments + (1 if absorption else 0)
+
+        # Number of rate constants (k) to predict
+        # k_a (if abs), k_el (always), k_cp/k_pc (if 2-comp)
+        self.num_rates = (1 if absorption else 0) + 1 + (2 if n_compartments == 2 else 0)
 
         # Define the layers of the neural network
 
@@ -39,8 +50,8 @@ class PKNODE(nn.Module):
             self.register_buffer("cov_stds", torch.ones(dim_cov))
 
         # Dynamics network
-        # Approximates dc(t)/dt
-        input_c = 3 + dim_cov if self.include_covariates else 3
+        # input: z (state_dim), t (1), z0 (state_dim), cov (dim_cov)
+        input_c = 2 * self.state_dim + 1 + (dim_cov if self.include_covariates else 0)
         layers_c = []
         in_dim = input_c
         for dim in dim_c:
@@ -48,7 +59,7 @@ class PKNODE(nn.Module):
             layers_c.append(nn.SiLU())
             in_dim = dim
 
-        layers_c.append(nn.Linear(in_dim, 1))
+        layers_c.append(nn.Linear(in_dim, self.num_rates))
         self.net_c = nn.Sequential(*layers_c)
 
         # Covariate projection network
@@ -138,4 +149,37 @@ class PKNODE(nn.Module):
                 ]
             )
 
-        return -torch.nn.functional.softplus(self.net_c(x)) * z_safe
+        rates = torch.nn.functional.softplus(self.net_c(x))
+
+        dzdt = torch.zeros_like(z_safe)
+        k_idx = 0
+
+        if self.absorption:
+            ka = rates[k_idx]
+            k_idx += 1
+            dzdt[0] -= ka * z_safe[0]
+            central_idx = 1
+        else:
+            central_idx = 0
+
+        kel = rates[k_idx]
+        k_idx += 1
+
+        # Central compartment
+        dzdt[central_idx] -= kel * z_safe[central_idx]
+        if self.absorption:
+            dzdt[central_idx] += ka * z_safe[0]
+
+        if self.n_compartments == 2:
+            peripheral_idx = central_idx + 1
+            kcp = rates[k_idx]
+            k_idx += 1
+            kpc = rates[k_idx]
+            k_idx += 1
+
+            dzdt[central_idx] -= kcp * z_safe[central_idx]
+            dzdt[central_idx] += kpc * z_safe[peripheral_idx]
+            dzdt[peripheral_idx] += kcp * z_safe[central_idx]
+            dzdt[peripheral_idx] -= kpc * z_safe[peripheral_idx]
+
+        return dzdt

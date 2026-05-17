@@ -26,14 +26,18 @@ if __name__ == "__main__":
 
     # Model initialization, same used in training
     nn_settings = config["settings"]["nn"]
+    model_settings = config["model"]
+    n_compartments = model_settings.get("n_compartments", 1)
+    absorption = model_settings.get("absorption", False)
+
     dim_c = nn_settings["dim_c"]
     if nn_settings["include_covariates"]:
         dim_V = nn_settings["dim_V"]
         n_cov = len(config["data"]["columns"]["covariates"])
-        model = PKNODE(dim_c, dim_V, n_cov)
+        model = PKNODE(dim_c, dim_V, n_cov, n_compartments, absorption)
         include_cov = True
     else:
-        model = PKNODE(dim_c)
+        model = PKNODE(dim_c, n_compartments=n_compartments, absorption=absorption)
         include_cov = False
 
     device = (
@@ -85,6 +89,11 @@ if __name__ == "__main__":
             else:
                 pred = res
 
+            # Extract central compartment concentration
+            central_idx = 1 if model.absorption else 0
+            if pred.numel() > 0:
+                pred = pred[:, central_idx].view(-1, 1)
+
             # Filter out observations before first dose if any
             mask = p_times > p_admin_times[0]
             target_vals = p_data["conc"][mask]
@@ -116,6 +125,9 @@ if __name__ == "__main__":
                 t, sol = utils.solve_dose_ode(
                     data, patient, model, include_cov, t_eval=t_eval
                 )
+                # Extract central compartment concentration
+                central_idx = 1 if model.absorption else 0
+                sol = sol[:, central_idx].view(-1, 1)
 
             plt.figure(figsize=(10, 6))
             plt.plot(t.cpu(), sol.cpu(), label="PKNODE Prediction")

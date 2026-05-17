@@ -68,8 +68,11 @@ class PKData:
         p_obs = self.obs_df[self.obs_df[self.cols["id"]] == patient_id].copy()
         p_admin = self.admin_df[self.admin_df[self.cols["id"]] == patient_id].copy()
 
-        # Handle duplicate observation times (e.g., if PD data is also present)
-        # Keep only the first record for each time point to avoid odeint errors
+        # Sort by time
+        p_obs = p_obs.sort_values(by=self.cols["time"])
+        p_admin = p_admin.sort_values(by=self.cols["time"])
+
+        # Handle duplicate observation times
         p_obs = p_obs.drop_duplicates(subset=[self.cols["time"]])
 
         data: dict[str, Any] = {
