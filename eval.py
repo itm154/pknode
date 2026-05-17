@@ -15,10 +15,16 @@ from model import PKNODE
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "-c", "--config", type=str, help="The config file", default="config.toml"
+        "-c",
+        "--config",
+        type=str,
+        help="Path to the TOML configuration file",
+        default="config.toml",
     )
     parser.add_argument(
-        "--save-plots", action="store_true", help="Save plots for all patients"
+        "--save-plots",
+        action="store_true",
+        help="Generate and save concentration-time profiles and residual analysis plots",
     )
     args = parser.parse_args()
 

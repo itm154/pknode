@@ -1,8 +1,10 @@
-# PKNODE: Pharmacokinetic Neural Ordinary Differential Equations
+# PKNODE
 
-PKNODE uses Neural Ordinary Differential Equations (Neural ODEs) for drug
-concentration prediction. It is an alternative to traditional compartmental
-models and Non-Linear Mixed Effects (NLME) models.
+PKNODE is an implementation of Neural ODE (NODE) to predict drug concentration.
+It is an experimental alternative to traditional models such as Non-Linear Mixed
+Effects (NLME)
+
+_NOT INTENDED FOR REAL WORLD USE_
 
 ## Installation
 
@@ -35,116 +37,144 @@ models and Non-Linear Mixed Effects (NLME) models.
 
 ## Usage
 
-### 1. Configure the Model
+### Model Training
 
-Edit `config.toml` to define your dataset paths, column mappings, and model
-parameters. (Project is still under development, configuration is bound to
-change)
+#### Command-Line Arguments
+
+| Argument       | Description                                                       |
+| :------------- | :---------------------------------------------------------------- |
+| `-c, --config` | Path to the TOML configuration file (default: `config.toml`).     |
+| `--resume`     | Resume training from the most recent checkpoint.                  |
+| `--load-model` | Load a specific `.pth` model file for fine-tuning or re-training. |
+
+#### Examples
+
+**Standard training execution:**
+
+```bash
+uv run train.py -c examples/theophylline.toml
+```
+
+**Resume training from checkpoint:**
+
+```bash
+uv run train.py -c examples/theophylline.toml --resume
+```
+
+**Load an existing model to further train it:**
+
+```bash
+uv run train.py -c examples/theophylline.toml --load-model models/theophylline.pth
+```
+
+---
+
+### Model Evaluation
+
+#### Command-Line Arguments
+
+| Argument       | Description                                                                                                     |
+| :------------- | :-------------------------------------------------------------------------------------------------------------- |
+| `-c, --config` | Path to the TOML configuration file.                                                                            |
+| `--save-plots` | Generate and save concentration-time profiles (including 90% prediction intervals) and residual analysis plots. |
+
+#### Examples
+
+**Basic evaluation:**
+
+```bash
+uv run eval.py -c examples/theophylline.toml
+```
+
+**Full evaluation with visualization:**
+
+```bash
+uv run eval.py -c examples/theophylline.toml --save-plots
+```
 
 <details>
-<summary>View Example config.toml</summary>
+<summary><b>Configuration Details</b></summary>
+
+The project uses TOML files for configuration.
+
+#### `[model]`
+
+- `name` (string): Name of the model (used for filenames).
+- `path` (string): Directory to save models.
+- `absorption` (boolean): `true` for first-order absorption (ADME), `false` for
+  instantaneous absorption (DME).
+
+#### `[data]`
+
+- `train_file` (string): Path to training CSV.
+- `test_file` (string): Path to testing CSV.
+
+#### `[data.columns]`
+
+- `id` (string): Patient ID column.
+- `time` (string): Time column.
+- `dose` (string): Dose amount column.
+- `conc` (string): Concentration column.
+- `evid` (string, optional): Event ID column.
+- `covariates` (list of strings): List of covariate column names.
+
+#### `[settings.train]`
+
+- `epoch` (integer): Training epochs.
+- `learning_rate` (float): Initial learning rate.
+- `weight_decay` (float): Regularization strength.
+- `patience` (integer): Epochs to wait before LR reduction.
+- `factor` (float): LR reduction factor.
+
+#### `[settings.nn]`
+
+- `dim_c` (list of integers): Layers for dynamics network (e.g.,
+  `[32, 32, 32]`).
+- `dim_V` (list of integers): Layers for Volume network (e.g., `[16]`).
+- `include_covariates` (boolean): Enable/disable covariate usage.
+
+#### Example: `theophylline.toml`
 
 ```toml
 [model]
-name = "tobramycin"
+name = "theophylline"
 path = "./models"
+absorption = true
 
 [data]
-train_file = "./data/tobramycin_train.csv"
-test_file = "./data/tobramycin_test.csv"
+train_file = "./data/theophylline_train.csv"
+test_file = "./data/theophylline_test.csv"
 
 [data.columns]
 id = "ID"
 time = "TIME"
-dose = "DOSE"
-conc = "CP"
-evid = "EVID"
-covariates = ["AGE", "SEX", "CLCR"]
+dose = "AMT"
+conc = "CONC"
+covariates = ["WEIGHT", "SEX"]
 
 [settings.train]
-epoch = 30
+epoch = 100
 weight_decay = 1e-4
-learning_rate = 5e-4
-step_size = 10
-gamma = 0.5
+learning_rate = 1e-3
+patience = 5
+factor = 0.5
 
 [settings.nn]
-dim_c = [32, 32, 32]
+dim_c = [64, 64, 64]
 dim_V = [16]
 include_covariates = true
 ```
 
 </details>
 
-<details>
-<summary>Detailed Configuration Explanation</summary>
-
-#### [model]
-
-- **name**: String. The filename used when saving the trained model (e.g.,
-  "warfarin" saves as `warfarin.pth`).
-- **path**: String. The directory where model weights will be saved.
-
-#### [data]
-
-- **train_file**: String. Path to the CSV training dataset.
-- **test_file**: String. Path to the CSV testing dataset.
-
-#### [data.columns]
-
-- **id**: String. Column name for unique patient/subject identifiers.
-- **time**: String. Column name for the time of the event (administration or
-  observation).
-- **dose**: String. Column name for the amount of drug administered (e.g., AMT).
-- **conc**: String. Column name for the measured drug concentration (e.g., DV or
-  CP).
-- **evid**: String (Optional). Column name for the event ID (1 for dose, 0 for
-  observation). If omitted, the code will infer event types from the dose and
-  concentration columns.
-- **covariates**: List of Strings. Names of columns containing patient-specific
-  features like weight, age, or sex.
-
-#### [settings.train]
-
-- **epoch**: Integer. Number of times the model iterates through the full
-  dataset during training.
-- **weight_decay**: Float. L2 regularization factor used to prevent overfitting.
-- **learning_rate**: Float. The step size used by the AdamW optimizer.
-- **step_size**: Integer. Step size used by the scheduler.
-- **gamma**: Float. Factor to multiply by with learning rate with every
-  step_size.
-
-#### [settings.nn]
-
-- **dim_c**: List of Integers. Defines the hidden layers for the dynamics
-  network (approximating $dc/dt$). For example, `[20, 20]` creates two layers
-  with 20 neurons each.
-- **dim_V**: List of Integers. Defines the hidden layers for the covariate
-  projection network that predicts the Volume of Distribution ($V$).
-- **include_covariates**: Boolean. Set to `true` to enable the model to use
-  patient features to adjust predictions.
-
-</details>
-
-### 2. Run Training
-
-```bash
-uv run train.py
-# or
-python train.py
-```
-
-Specify configuration to use (default is `config.toml`):
-
-```bash
-uv run train.py --config examples/warfarin.toml
-```
-
 ## Credits
 
 - This project is based on
   [TommyGiak/pharmacoNODE](https://github.com/TommyGiak/pharmacoNODE). This
   project's purpose is to improve and build upon the original.
+- Datasets obtained from:
+  - [nlmixr2data](https://nlmixr2.github.io/nlmixr2data/)
+  - [Monolix](https://monolixsuite.slp-software.com/monolix/2024R1/data-set-examples)
 
 ## License
 

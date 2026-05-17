@@ -138,13 +138,21 @@ def train(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "-c", "--config", type=str, help="The config file to use", default="config.toml"
+        "-c",
+        "--config",
+        type=str,
+        help="Path to the TOML configuration file",
+        default="config.toml",
     )
     parser.add_argument(
-        "--resume", action="store_true", help="Resume training from last checkpoint"
+        "--resume",
+        action="store_true",
+        help="Resume training from the most recent checkpoint",
     )
     parser.add_argument(
-        "--load-model", type=str, help="Load an existing model to fine-tune"
+        "--load-model",
+        type=str,
+        help="Load a specific .pth model file for fine-tuning or re-training",
     )
     args = parser.parse_args()
 
