@@ -1,24 +1,23 @@
 [model]
-name = "theophylline"
+name = "mavoglurant"
 path = "./models"
 absorption = true
 
 [data]
-train_file = "./data/theophylline_train.csv"
-test_file = "./data/theophylline_test.csv"
+train_file = "./data/mavoglurant_train.csv"
+test_file = "./data/mavoglurant_test.csv"
 
 [data.columns]
 id = "ID"
 time = "TIME"
-dose = "AMT"
-conc = "CONC"
-# evid = "EVID"
-covariates = ["WEIGHT", "SEX"]
+dose = "DOSE"
+conc = "DV"
+covariates = ["AGE", "SEX", "WT", "HT"]
 
 [settings.train]
 epoch = 100
 weight_decay = 1e-4
-learning_rate = 5e-4
+learning_rate = 1e-3
 patience = 5
 factor = 0.5
 
