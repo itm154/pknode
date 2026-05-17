@@ -27,17 +27,16 @@ if __name__ == "__main__":
     # Model initialization, same used in training
     nn_settings = config["settings"]["nn"]
     model_settings = config["model"]
-    n_compartments = model_settings.get("n_compartments", 1)
     absorption = model_settings.get("absorption", False)
 
     dim_c = nn_settings["dim_c"]
     if nn_settings["include_covariates"]:
         dim_V = nn_settings["dim_V"]
         n_cov = len(config["data"]["columns"]["covariates"])
-        model = PKNODE(dim_c, dim_V, n_cov, n_compartments, absorption)
+        model = PKNODE(dim_c, dim_V, n_cov, absorption)
         include_cov = True
     else:
-        model = PKNODE(dim_c, n_compartments=n_compartments, absorption=absorption)
+        model = PKNODE(dim_c, absorption=absorption)
         include_cov = False
 
     device = (
@@ -63,21 +62,16 @@ if __name__ == "__main__":
         config["data"]["columns"],
     )
 
-    MSE = MSELoss()
-    all_losses = []
     all_preds = []
     all_target = []
     all_times = []
 
     plots_dir = os.path.join(".", "plots")
-    if args.save_plots:
-        if os.path.exists(plots_dir):
-            shutil.rmtree(plots_dir)
-        os.makedirs(plots_dir, exist_ok=True)
 
     print(f"Evaluating {len(data.patients)} patients...")
 
-    for patient in tqdm(data.patients):
+    patient_results = []
+    for patient in tqdm(data.patients, desc="Analyzing data"):
         p_data = data.get_patient_data(patient)
         p_times = p_data["times"]
         p_admin_times = p_data["admin_times"]
@@ -105,86 +99,131 @@ if __name__ == "__main__":
             ).view(-1, 1)
 
             if target.shape[0] > 0:
-                log_pred = torch.log(torch.clamp(pred, min=0.0) + 1e-7)
-                log_target = torch.log(torch.clamp(target, min=0) + 1e-7)
-                loss = MSE(log_pred, log_target)
-
-                all_losses.append(loss.item())
                 all_preds.extend(pred.cpu().numpy().flatten())
                 all_target.extend(target.cpu().numpy().flatten())
                 all_times.extend(p_times[mask])
 
-        if args.save_plots:
-            p_times_plot = list(p_data["times"]) + list(p_data["admin_times"])
-            t_start = min(p_times_plot)
-            t_end = max(p_times_plot)
+        patient_results.append((patient, p_data))
 
-            t_eval = torch.linspace(t_start, t_end, 500, device=device)
-
-            with torch.no_grad():
-                t, sol = utils.solve_dose_ode(
-                    data, patient, model, include_cov, t_eval=t_eval
-                )
-                # Extract central compartment concentration
-                central_idx = 1 if model.absorption else 0
-                sol = sol[:, central_idx].view(-1, 1)
-
-            plt.figure(figsize=(10, 6))
-            plt.plot(t.cpu(), sol.cpu(), label="PKNODE Prediction")
-            plt.scatter(
-                p_data["times"],
-                p_data["conc"],
-                color="red",
-                label="Ground Truth",
-                zorder=5,
-            )
-            for admin_time in p_data["admin_times"]:
-                plt.axvline(x=admin_time, color="gray", linestyle="--", alpha=0.5)
-
-            plt.xlabel("Time")
-            plt.ylabel("Concentration (mg/l)")
-            plt.title(f"Patient Drug Concentration Prediction for ID: {patient}")
-            plt.legend()
-
-            plots_path = os.path.join("./plots", f"{patient}.png")
-            plt.savefig(plots_path)
-            plt.close()
-
-    if all_losses:
-        avg_msle = sum(all_losses) / len(all_losses)
-        print(f"\nAverage MSLE across all patients: {avg_msle:.4e}")
-
+    if all_target:
         preds_arr = np.array(all_preds)
         target_arr = np.array(all_target)
         times_arr = np.array(all_times)
-        residuals = target_arr - preds_arr
 
-        # Residual plot
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+        # Log scale metrics for band calculation
+        log_preds = np.log(np.maximum(preds_arr, 1e-7))
+        log_target = np.log(np.maximum(target_arr, 1e-7))
+        log_residuals = log_target - log_preds
+        sigma_log = np.std(log_residuals)
+        z_score = 1.645  # 90% CI for prediction interval
 
-        # Residuals vs Time
-        ax1.scatter(times_arr, residuals, alpha=0.5)
-        ax1.axhline(y=0, color="r", linestyle="--")
-        ax1.set_xlabel("Time (h)")
-        ax1.set_ylabel("Residual (Observed - Predicted)")
-        ax1.set_title("Residuals vs Time")
+        # Linear scale metrics
+        mse_lin = np.mean((preds_arr - target_arr) ** 2)
+        rmse_lin = np.sqrt(mse_lin)
+        mae_lin = np.mean(np.abs(preds_arr - target_arr))
+        mape = np.mean(np.abs((target_arr - preds_arr) / (target_arr + 1e-7))) * 100
 
-        # Observed vs Predicted plot
-        ax2.scatter(preds_arr, target_arr, alpha=0.5)
-        lims = [
-            np.min([ax2.get_xlim(), ax2.get_ylim()]),
-            np.max([ax2.get_xlim(), ax2.get_ylim()]),
-        ]
-        ax2.plot(lims, lims, "r--", alpha=0.75, zorder=0)
-        ax2.set_xlabel("Predicted Concentration")
-        ax2.set_ylabel("Observed Concentration")
-        ax2.set_title("Observed vs Predicted")
+        # R-squared (Linear)
+        ss_res = np.sum((target_arr - preds_arr) ** 2)
+        ss_tot = np.sum((target_arr - np.mean(target_arr)) ** 2)
+        r2_lin = 1 - (ss_res / (ss_tot + 1e-7))
 
-        plt.tight_layout()
-        os.makedirs(plots_dir, exist_ok=True)
-        residual_plot_path = os.path.join(plots_dir, "residuals.png")
-        plt.savefig(residual_plot_path)
-        print(f"Residual plots saved to {residual_plot_path}")
-        plt.close()
+        # R-squared (Log)
+        ss_res_log = np.sum(log_residuals**2)
+        ss_tot_log = np.sum((log_target - np.mean(log_target)) ** 2)
+        r2_log = 1 - (ss_res_log / (ss_tot_log + 1e-7))
+
+        # MSLE
+        msle = np.mean(log_residuals**2)
+
+        print(f"\nEvaluation Results for {config['model']['name']}:")
+        print(f"{'Metric':<20} | {'Value':<10}")
+        print("-" * 35)
+        print(f"{'MAE (Linear)':<20} | {mae_lin:.4e}")
+        print(f"{'MAPE (%)':<20} | {mape:.2f}%")
+        print(f"{'RMSE (Linear)':<20} | {rmse_lin:.4e}")
+        print(f"{'MSLE (Log)':<20} | {msle:.4e}")
+        print(f"{'R-squared (Linear)':<20} | {r2_lin:.4f}")
+        print(f"{'R-squared (Log)':<20} | {r2_log:.4f}")
+
+        if args.save_plots:
+            if os.path.exists(plots_dir):
+                shutil.rmtree(plots_dir)
+            os.makedirs(plots_dir, exist_ok=True)
+
+            for patient, p_data in tqdm(patient_results, desc="Generating plots"):
+                p_times_plot = list(p_data["times"]) + list(p_data["admin_times"])
+                t_start = min(p_times_plot)
+                t_end = max(p_times_plot)
+                t_eval = torch.linspace(t_start, t_end, 500, device=device)
+
+                with torch.no_grad():
+                    t, sol = utils.solve_dose_ode(
+                        data, patient, model, include_cov, t_eval=t_eval
+                    )
+                    central_idx = 1 if model.absorption else 0
+                    sol = sol[:, central_idx].view(-1, 1)
+
+                pred_curve = sol.cpu().numpy().flatten()
+                # 90% Prediction Interval band (log-normal assumption)
+                lower_bound = pred_curve * np.exp(-z_score * sigma_log)
+                upper_bound = pred_curve * np.exp(z_score * sigma_log)
+
+                plt.figure(figsize=(10, 6))
+                plt.plot(t.cpu(), pred_curve, label="PKNODE Prediction", color="blue")
+                plt.fill_between(
+                    t.cpu(),
+                    lower_bound,
+                    upper_bound,
+                    color="blue",
+                    alpha=0.2,
+                    label="90% Interval",
+                )
+
+                plt.scatter(
+                    p_data["times"],
+                    p_data["conc"],
+                    color="red",
+                    label="Ground Truth",
+                    zorder=5,
+                )
+                for admin_time in p_data["admin_times"]:
+                    plt.axvline(x=admin_time, color="gray", linestyle="--", alpha=0.5)
+
+                plt.xlabel("Time")
+                plt.ylabel("Concentration")
+                plt.title(f"Patient Drug Concentration Prediction for ID: {patient}")
+                plt.legend()
+                plt.grid(True, alpha=0.3)
+
+                plots_path = os.path.join(plots_dir, f"{patient}.png")
+                plt.savefig(plots_path)
+                plt.close()
+
+            # Residual plots
+            residuals = target_arr - preds_arr
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+
+            ax1.scatter(times_arr, residuals, alpha=0.5)
+            ax1.axhline(y=0, color="r", linestyle="--")
+            ax1.set_xlabel("Time (h)")
+            ax1.set_ylabel("Residual (Observed - Predicted)")
+            ax1.set_title("Residuals vs Time")
+
+            ax2.scatter(preds_arr, target_arr, alpha=0.5)
+            lims = [
+                np.min([ax2.get_xlim(), ax2.get_ylim()]),
+                np.max([ax2.get_xlim(), ax2.get_ylim()]),
+            ]
+            ax2.plot(lims, lims, "r--", alpha=0.75, zorder=0)
+            ax2.set_xlabel("Predicted Concentration")
+            ax2.set_ylabel("Observed Concentration")
+            ax2.set_title("Observed vs Predicted")
+
+            plt.tight_layout()
+            residual_plot_path = os.path.join(plots_dir, "residuals.png")
+            plt.savefig(residual_plot_path)
+            print(f"Plots and residuals saved to {plots_dir}")
+            plt.close()
     else:
         print("\nNo valid observations found for evaluation.")

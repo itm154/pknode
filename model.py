@@ -21,7 +21,6 @@ class PKNODE(nn.Module):
         dim_c: list[int],
         dim_V: list[int] | None = None,
         dim_cov: int = 0,
-        n_compartments: int = 1,
         absorption: bool = False,
     ):
         super().__init__()
@@ -29,15 +28,14 @@ class PKNODE(nn.Module):
         # Check if covariates are used
         self.include_covariates = dim_V is not None
         self.dim_cov = dim_cov
-        self.n_compartments = n_compartments
         self.absorption = absorption
 
-        # State dimension: central (+ depot if absorption) (+ peripheral if 2 compartments)
-        self.state_dim = n_compartments + (1 if absorption else 0)
+        # State dimension: central (+ depot if absorption)
+        self.state_dim = 1 + (1 if absorption else 0)
 
         # Number of rate constants (k) to predict
-        # k_a (if abs), k_el (always), k_cp/k_pc (if 2-comp)
-        self.num_rates = (1 if absorption else 0) + 1 + (2 if n_compartments == 2 else 0)
+        # k_a (if abs), k_el (always)
+        self.num_rates = (1 if absorption else 0) + 1
 
         # Define the layers of the neural network
 
@@ -169,17 +167,5 @@ class PKNODE(nn.Module):
         dzdt[central_idx] -= kel * z_safe[central_idx]
         if self.absorption:
             dzdt[central_idx] += ka * z_safe[0]
-
-        if self.n_compartments == 2:
-            peripheral_idx = central_idx + 1
-            kcp = rates[k_idx]
-            k_idx += 1
-            kpc = rates[k_idx]
-            k_idx += 1
-
-            dzdt[central_idx] -= kcp * z_safe[central_idx]
-            dzdt[central_idx] += kpc * z_safe[peripheral_idx]
-            dzdt[peripheral_idx] += kcp * z_safe[central_idx]
-            dzdt[peripheral_idx] -= kpc * z_safe[peripheral_idx]
 
         return dzdt

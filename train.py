@@ -154,17 +154,16 @@ if __name__ == "__main__":
     # Get configuration from config.toml file
     nn_settings = config["settings"]["nn"]
     model_settings = config["model"]
-    n_compartments = model_settings.get("n_compartments", 1)
     absorption = model_settings.get("absorption", False)
 
     dim_c = nn_settings["dim_c"]
     if nn_settings["include_covariates"]:
         dim_V = nn_settings["dim_V"]
         n_cov = len(config["data"]["columns"]["covariates"])
-        model = PKNODE(dim_c, dim_V, n_cov, n_compartments, absorption)
+        model = PKNODE(dim_c, dim_V, n_cov, absorption)
         include_cov = True
     else:
-        model = PKNODE(dim_c, n_compartments=n_compartments, absorption=absorption)
+        model = PKNODE(dim_c, absorption=absorption)
         include_cov = False
 
     # Tru to use GPU/CUDA if available

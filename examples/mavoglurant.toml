@@ -22,6 +22,6 @@ patience = 5
 factor = 0.5
 
 [settings.nn]
-dim_c = [32, 32, 32]
+dim_c = [64, 64, 64]
 dim_V = [16]
 include_covariates = true

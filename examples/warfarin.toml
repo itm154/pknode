@@ -1,10 +1,11 @@
 [model]
 name = "warfarin"
 path = "./models"
+absorption = false
 
 [data]
-file = "./data/warfarin_data.csv"
-inc_cov = true
+train_file = "./data/warfarin_train.csv"
+test_file = "./data/warfarin_test.csv"
 
 [data.columns]
 id = "ID"
@@ -15,13 +16,13 @@ conc = "DV"
 covariates = ["WT", "AGE", "SEX"]
 
 [settings.train]
-pre_train_epoch = 10
-train_epoch = 100
-finetune_epoch = 10
-weight_decay = 0.1
+epoch = 100
+weight_decay = 1e-4
 learning_rate = 1e-3
+patience = 5
+factor = 0.5
 
 [settings.nn]
-dim_c = [20, 20, 20]
-dim_V = [10, 10]
+dim_c = [64, 64, 64]
+dim_V = [16]
 include_covariates = true
