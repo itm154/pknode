@@ -4,8 +4,8 @@ path = "./models"
 absorption = false
 
 [data]
-train_file = "./data/tobramycin_train.csv"
-test_file = "./data/tobramycin_test.csv"
+train_file = "./data/warfarin_train.csv"
+test_file = "./data/warfarin_test.csv"
 
 [data.columns]
 id = "ID"
