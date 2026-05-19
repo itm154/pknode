@@ -1,8 +1,9 @@
-import matplotlib
-import matplotlib.pyplot as plt
+import argparse
+import os
 import numpy as np
 import pandas as pd
-import toml
+import matplotlib
+import matplotlib.pyplot as plt
 
 matplotlib.use("Agg")  # prevent GUI pop-up
 
@@ -14,30 +15,25 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
+from utils import getConfig # Reuse utils
 
-# Load config file
-def load_data(config_path):
-
-    config = toml.load(config_path)
-
-    # Read dataset path from config
-    train_path = config["data"]["train_file"]
-    test_path = config["data"]["test_file"]
-    col_config = config["data"]["columns"]
-
-    # Load datasets
-    train_df = pd.read_csv(train_path)
-    test_df = pd.read_csv(test_path)
-
-    return train_df, test_df, col_config
+# Create output directories for plots
+def create_dirs():
+    dirs = [
+        "ml_plots/models",
+        "ml_plots/residuals",
+        "ml_plots/pk_curves"
+    ]
+    for d in dirs:
+        os.makedirs(d, exist_ok=True)
 
 
-# Auto detect important columns
-def clean_data(df, target_col):
+# Clean data
+def clean_data(df):
 
     df = df.copy()
 
-    # Clean data (Convert "." to NaN)
+    # Convert "." to NaN
     df.replace(".", np.nan, inplace=True)
 
     # Auto detect column
@@ -86,29 +82,38 @@ def get_preprocessor(numeric_cols):
     )
 
 
-# Evaluation (Metrics)
-def evaluate_model(name, y_true, y_pred):
+# Extra Metrics (NODE-style)
+def extra_metrics(y_true, y_pred):
+
+    eps = 1e-8
 
     mae = mean_absolute_error(y_true, y_pred)
     rmse = np.sqrt(mean_squared_error(y_true, y_pred))
     r2 = r2_score(y_true, y_pred)
 
-    print(f"\n===== {name} =====")
-    print(f"MAE: {mae:.4f}")
-    print(f"RMSE: {rmse:.4f}")
-    print(f"R2: {r2:.4f}")
+    mape = np.mean(np.abs((y_true - y_pred) / (y_true + eps))) * 100
+    smape = np.mean(2 * np.abs(y_pred - y_true) / (np.abs(y_true) + np.abs(y_pred) + eps)) * 100
+    pearson = np.corrcoef(y_true, y_pred)[0,  1]
 
     return {
-        "Model": name,
         "MAE": mae,
         "RMSE": rmse,
         "R2": r2,
+        "MAPE": mape,
+        "SMAPE": smape,
+        "Pearson": pearson
     }
 
+def print_metrics(name, metrics):
+    print(f"\n===== {name} =====")
+    for k, v in metrics.items():
+        print(f"{k}: {v:.4f}")
 
-# Plot 1: TRUE vs PREDICTED
+
+# Plots
 def plot_results(name, y_true, y_pred):
 
+    # True vs Pred
     plt.figure(figsize=(6, 5))
     plt.scatter(y_true, y_pred, alpha=0.6)
 
@@ -122,9 +127,10 @@ def plot_results(name, y_true, y_pred):
     plt.xlabel("True Concentration")
     plt.ylabel("Predicted Concentration")
     plt.title(f"{name}: True vs Predicted")
-    filename = f"ml_plots/models/{name.replace(' ', '_').lower()}_true_vs_pred.png"
+
+    os.makedirs("ml_plots/models", exist_ok=True)
     plt.tight_layout()
-    plt.savefig(filename, dpi=300)
+    plt.savefig(f"ml_plots/models/{name}_true_vs_pred.png", dpi=300)
     plt.close()
 
     # Residual
@@ -136,50 +142,65 @@ def plot_results(name, y_true, y_pred):
 
     plt.xlabel("Predicted")
     plt.ylabel("Residuals")
-    plt.title(f"{name}: Redisuals")
-    filename = f"ml_plots/residuals/{name.replace(' ', '_').lower()}_residuals.png"
-    plt.savefig(filename, dpi=300)
+    plt.title(name + "Redisuals")
+
+    os.makedirs("ml_plots/residuals", exist_ok=True)
+    plt.tight_layout()
+    plt.savefig(f"ml_plots/residuals/{name}_residuals.png", dpi=300)
     plt.close()
 
 
-# Plot 2: PK Curve
+# Plot 2: PK Curves (All patients)
 def plot_pk_curve_for_all(df, id_col, time_col, target_col):
 
     if id_col is None or time_col is None:
         return
 
+    os.makedirs("ml_plots/pk_curves", exist_ok=True)
+
     df = df.copy()
     df[time_col] = pd.to_numeric(df[time_col], errors="coerce")
 
-    for patient_id in df[id_col].dropna().unique():
-        patient_df = df[df[id_col] == patient_id].copy()
-        patient_df = patient_df.dropna(subset=[time_col, target_col])
-        patient_df = patient_df.sort_values(time_col)
+    for pid in df[id_col].dropna().unique():
+
+        patient = df[df[id_col] == pid].copy()
+        patient = patient.dropna(subset=[time_col, target_col])
+        patient = patient.sort_values(time_col)
+
+        if len(patient) < 2:
+            continue
 
         plt.figure(figsize=(8, 5))
-        plt.plot(patient_df[time_col], patient_df[target_col], marker="o")
+        plt.plot(patient[time_col], patient[target_col], marker="o")
 
         plt.xlabel("Time")
         plt.ylabel("Concentration")
-        plt.title(f"PK Curve - Patient {patient_id}")
+        plt.title(f"PK Curve - Patient {pid}")
         plt.grid(True)
 
-        filename = f"ml_plots/pk_curves/pk_curve_{patient_id}.png"
         plt.tight_layout()
-        plt.savefig(filename, dpi=300)
+        plt.savefig(f"ml_plots/pk_curves/pk_{pid}.png", dpi=300)
         plt.close()
 
 
 # Main
-def main():
+def main(config_path):
 
-    train_df, test_df, col_config = load_data("config.toml")
-    target_col = col_config["conc"]
+    create_dirs()
+
+    # Load config via utils
+    config = getConfig(config_path)
+
+    train_path = config["data"]["train_file"]
+    test_path = config["data"]["test_file"]
+    col_config = config["data"]["columns"]
+
+    train_df = pd.read_csv(train_path)
+    test_df = pd.read_csv(test_path)
+
     # Clean both datasets
-    train_df, target_col = clean_data(train_df, target_col)
-    test_df, target_col = clean_data(test_df, target_col)
-
-    print("Target Column: ", target_col)
+    train_df, target_col = clean_data(train_df)
+    test_df, _ = clean_data(test_df)
 
     # Build train
     X_train, y_train, numeric_cols = build_features(train_df, target_col)
@@ -203,7 +224,9 @@ def main():
         pipeline.fit(X_train, y_train)
         y_pred = pipeline.predict(X_test)
 
-        evaluate_model(name, y_test, y_pred)
+        metrics = extra_metrics(y_test, y_pred)
+        print_metrics(name, metrics)
+
         plot_results(name, y_test, y_pred)
 
     id_col = col_config.get("id", None)
@@ -213,4 +236,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-c", "--config", default="config.toml")
+
+    args = parser.parse_args()
+
+    main(args.config)
