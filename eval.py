@@ -199,6 +199,11 @@ if __name__ == "__main__":
                 plt.xlabel("Time")
                 plt.ylabel("Concentration")
                 plt.title(f"Patient Drug Concentration Prediction for ID: {patient}")
+
+                # Capping Y-axis to prevent stretching from CI bands
+                y_max = max(np.max(p_data["conc"]), np.max(pred_curve))
+                plt.ylim(-0.05 * y_max, 1.2 * y_max)
+
                 plt.legend()
                 plt.grid(True, alpha=0.3)
 
@@ -206,30 +211,25 @@ if __name__ == "__main__":
                 plt.savefig(plots_path, dpi=300)
                 plt.close()
 
-            # Residual plots
-            residuals = target_arr - preds_arr
-            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+            # Observed vs Predicted plot
+            plt.figure(figsize=(8, 8))
+            plt.scatter(preds_arr, target_arr, alpha=0.5)
 
-            ax1.scatter(times_arr, residuals, alpha=0.5)
-            ax1.axhline(y=0, color="r", linestyle="--")
-            ax1.set_xlabel("Time (h)")
-            ax1.set_ylabel("Residual (Observed - Predicted)")
-            ax1.set_title("Residuals vs Time")
+            all_min = np.min([plt.xlim()[0], plt.ylim()[0]])
+            all_max = np.max([plt.xlim()[1], plt.ylim()[1]])
+            plt.plot(
+                [all_min, all_max], [all_min, all_max], "r--", alpha=0.75, zorder=0
+            )
 
-            ax2.scatter(preds_arr, target_arr, alpha=0.5)
-            lims = [
-                np.min([ax2.get_xlim(), ax2.get_ylim()]),
-                np.max([ax2.get_xlim(), ax2.get_ylim()]),
-            ]
-            ax2.plot(lims, lims, "r--", alpha=0.75, zorder=0)
-            ax2.set_xlabel("Predicted Concentration")
-            ax2.set_ylabel("Observed Concentration")
-            ax2.set_title("Observed vs Predicted")
-
+            plt.xlabel("Predicted Concentration")
+            plt.ylabel("Observed Concentration")
+            plt.title("Observed vs Predicted")
+            plt.grid(True, alpha=0.3)
             plt.tight_layout()
-            residual_plot_path = os.path.join(plots_dir, "residuals.png")
-            plt.savefig(residual_plot_path)
-            print(f"Plots and residuals saved to {plots_dir}")
+
+            obs_pred_path = os.path.join(plots_dir, "obs_vs_pred.png")
+            plt.savefig(obs_pred_path, dpi=300)
+            print(f"Plots and summary saved to {plots_dir}")
             plt.close()
     else:
         print("\nNo valid observations found for evaluation.")
