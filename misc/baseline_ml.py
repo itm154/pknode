@@ -20,7 +20,6 @@ from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
-
 from utils import getConfig  # Reuse utils
 
 
@@ -36,19 +35,32 @@ def create_dirs(model_names):
 
 
 # Clean data
-def clean_data(df):
+def clean_data(df, col_config):
     df = df.copy()
     df.replace(".", np.nan, inplace=True)
 
-    possible_targets = ["DV", "CP", "CONC"]
-    target_col = next((c for c in possible_targets if c in df.columns), None)
+    target_col = col_config.get("conc")
+    if target_col not in df.columns:
+        possible_targets = ["DV", "CP", "CONC"]
+        target_col = next((c for c in possible_targets if c in df.columns), None)
 
     if target_col is None:
         raise ValueError("No concentration column found.")
 
     print("Target Column: ", target_col)
     df[target_col] = pd.to_numeric(df[target_col], errors="coerce")
-    df = df.dropna(subset=[target_col])
+
+    # Filter for observations (EVID=0) if column exists
+    evid_col = col_config.get("evid")
+    if evid_col and evid_col in df.columns:
+        df = df[df[evid_col] == 0]
+    else:
+        # Fallback: remove rows where concentration is NaN
+        df = df.dropna(subset=[target_col])
+        # If no EVID, rows with dose > 0 are administrations
+        dose_col = col_config.get("dose")
+        if dose_col and dose_col in df.columns:
+            df = df[pd.to_numeric(df[dose_col], errors="coerce").fillna(0) == 0]
 
     return df, target_col
 
@@ -115,11 +127,7 @@ def print_metrics(name, metrics):
     print(f"\nEvaluation Results for {name}:")
     print(f"{'Metric':<20} | {'Value':<10}")
     print("-" * 35)
-    print(
-        f"{'RMSE (Linear)':<20} | {metrics['RMSE (Linear) Erik']:.4e}"
-        if "RMSE (Linear) Erik" in metrics
-        else f"{'RMSE (Linear)':<20} | {metrics['RMSE (Linear)']:.4e}"
-    )
+    print(f"{'RMSE (Linear)':<20} | {metrics['RMSE (Linear)']:.4e}")
     print(f"{'MAE (Linear)':<20} | {metrics['MAE (Linear)']:.4e}")
     print(f"{'MAPE (%)':<20} | {metrics['MAPE (%)']:.2f}%")
     print(f"{'R-squared (Linear)':<20} | {metrics['R-squared (Linear)']:.4f}")
@@ -170,7 +178,7 @@ def plot_model_pk_curves(name, pipeline, df, id_col, time_col, target_col):
 
     for pid in df_plot[id_col].dropna().unique()[:10]:  # Limit to first 10 for speed
         patient = df_plot[df_plot[id_col] == pid].sort_values(time_col)
-        if len(patient) < 2:
+        if len(patient) < 1:
             continue
 
         plt.figure(figsize=(8, 5))
@@ -205,8 +213,8 @@ def main(config_path):
     if not os.path.exists(test_path):
         test_path = os.path.join("..", test_path)
 
-    train_df, target_col = clean_data(pd.read_csv(train_path))
-    test_df, _ = clean_data(pd.read_csv(test_path))
+    train_df, target_col = clean_data(pd.read_csv(train_path), col_config)
+    test_df, _ = clean_data(pd.read_csv(test_path), col_config)
 
     X_train, y_train, numeric_cols = build_features(train_df, target_col)
     X_test, y_test = test_df[numeric_cols], test_df[target_col]
