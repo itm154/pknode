@@ -203,7 +203,7 @@ if __name__ == "__main__":
                 plt.grid(True, alpha=0.3)
 
                 plots_path = os.path.join(plots_dir, f"{patient}.png")
-                plt.savefig(plots_path)
+                plt.savefig(plots_path, dpi=300)
                 plt.close()
 
             # Residual plots
