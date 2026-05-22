@@ -20,12 +20,13 @@ from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+
 from utils import getConfig  # Reuse utils
 
 
 # Create output directories for plots
 def create_dirs(model_names):
-    base_dir = "misc/plots"
+    base_dir = "misc/ml_plots"
     if os.path.exists(base_dir):
         shutil.rmtree(base_dir)
     os.makedirs(base_dir, exist_ok=True)
@@ -137,7 +138,7 @@ def print_metrics(name, metrics):
 
 def plot_results(name, y_true, y_pred):
     folder_name = name.lower().replace(" ", "_")
-    model_dir = os.path.join("misc/plots", folder_name)
+    model_dir = os.path.join("misc/ml_plots", folder_name)
 
     plt.figure(figsize=(6, 5))
     plt.scatter(y_true, y_pred, alpha=0.6)
@@ -167,7 +168,7 @@ def plot_model_pk_curves(name, pipeline, df, id_col, time_col, target_col):
         return
 
     folder_name = name.lower().replace(" ", "_")
-    pk_dir = os.path.join("misc/plots", folder_name, "pk_curves")
+    pk_dir = os.path.join("misc/ml_plots", folder_name, "pk_curves")
 
     df_plot = df.copy()
     df_plot[time_col] = pd.to_numeric(df_plot[time_col], errors="coerce")
@@ -176,7 +177,7 @@ def plot_model_pk_curves(name, pipeline, df, id_col, time_col, target_col):
     X, _, _ = build_features(df_plot, target_col)
     df_plot["PRED"] = pipeline.predict(X)
 
-    for pid in df_plot[id_col].dropna().unique()[:10]:  # Limit to first 10 for speed
+    for pid in df_plot[id_col].dropna().unique():
         patient = df_plot[df_plot[id_col] == pid].sort_values(time_col)
         if len(patient) < 1:
             continue
