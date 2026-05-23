@@ -9,6 +9,13 @@ from torchdiffeq import odeint
 from data import PKData
 from model import PKNODE
 
+# Utility functions for common usage
+# Improvements from pharmacoNODE:
+# 1. Configuration uses toml file, easily parsable and extensible
+# 2. Simplified multi dose ODE solver (one function is usable for both plotting and training)
+# 3. Models is saved after every epoch in training, enabling resuming or configuration change mid train
+# NOTE: A model file must be accompanied by it's configuration file, or else it would not load
+
 
 def getConfig(file: str) -> dict:
     """
@@ -29,7 +36,7 @@ def solve_dose_ode(
     t_eval: Optional[Tensor] = None,
 ) -> Tensor | tuple[Tensor, Tensor]:
     """
-    Solve the ODE for a patient using the Neural Network model with multi-dose support
+    Solve the ODE for a patient using the Neural Network model
     """
     device = next(model.parameters()).device
     p_data = data.get_patient_data(patient)

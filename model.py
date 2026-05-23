@@ -2,6 +2,14 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
+# Most of the code is obtained from: https://github.com/TommyGiak/pharmacoNODE/blob/main/models.py
+# With some improvements:
+# 1. Scaling for all input features
+# 2. Added Absorption state
+# 3. Defined mass balance equations to ensure model adheres to biological and physical rule (original was a black box)
+# 4. Used SiLU instead of Softplus for hidden layer connections, so model can learn complex non-linear patterns
+# 5. General simplification (e.g moved PKData class to it's own file)
+
 
 # Read: https://medium.com/@sahin.samia/train-a-neural-network-in-pytorch-a-complete-beginners-walkthrough-3897d18d6078
 class PKNODE(nn.Module):

@@ -37,6 +37,8 @@ _NOT INTENDED FOR REAL WORLD USE_
 
 ## Usage
 
+Replace `uv run` with `python` if you're not using uv.
+
 ### Model Training
 
 #### Command-Line Arguments
@@ -73,10 +75,10 @@ uv run train.py -c examples/theophylline.toml --load-model models/theophylline.p
 
 #### Command-Line Arguments
 
-| Argument       | Description                                                                                                     |
-| :------------- | :-------------------------------------------------------------------------------------------------------------- |
-| `-c, --config` | Path to the TOML configuration file.                                                                            |
-| `--save-plots` | Generate and save concentration-time profiles (including 90% prediction intervals) and residual analysis plots. |
+| Argument       | Description                                                                |
+| :------------- | :------------------------------------------------------------------------- |
+| `-c, --config` | Path to the TOML configuration file.                                       |
+| `--save-plots` | Generate and save concentration-time profiles and residual analysis plots. |
 
 #### Examples
 
@@ -102,7 +104,8 @@ The project uses TOML files for configuration.
 - `name` (string): Name of the model (used for filenames).
 - `path` (string): Directory to save models.
 - `absorption` (boolean): `true` for first-order absorption (ADME), `false` for
-  instantaneous absorption (DME).
+  instantaneous absorption (DME). Set based on drug/dataset's administration
+  method.
 
 #### `[data]`
 
@@ -113,10 +116,11 @@ The project uses TOML files for configuration.
 
 - `id` (string): Patient ID column.
 - `time` (string): Time column.
-- `dose` (string): Dose amount column.
-- `conc` (string): Concentration column.
+- `dose` (string): Dose amount column (e.g AMT, DOSE).
+- `conc` (string): Concentration column (e.g DV, CONC).
 - `evid` (string, optional): Event ID column.
-- `covariates` (list of strings): List of covariate column names.
+- `covariates` (list of strings): List of covariate column names. (column must
+  be a numerical value)
 
 #### `[settings.train]`
 

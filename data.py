@@ -3,6 +3,10 @@ from typing import Any, Optional
 import numpy as np
 import pandas as pd
 
+# Overhauled from the original: https://github.com/TommyGiak/pharmacoNODE/blob/main/models.py
+# Passes patient data as a per patient dictionary
+# Automatic inference for observation or administration
+
 
 # Data/Dataset is based on the Monolix Format
 # https://monolixsuite.slp-software.com/monolix/2024R1/data-format
@@ -48,7 +52,7 @@ class PKData:
         self.obs_df = self.df[self.df[self.evid_col] == 0]
         self.admin_df = self.df[self.df[self.evid_col] == 1]
 
-        # Scale covariates using z-score (see line 80)
+        # Variables to scale covariates using z-score
         if "covariates" in self.cols:
             cov_cols = self.cols["covariates"]
             if cov_means is not None and cov_stds is not None:

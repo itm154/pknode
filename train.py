@@ -9,6 +9,12 @@ import utils
 from data import PKData
 from model import PKNODE
 
+# Also overhauled from the original: https://github.com/TommyGiak/pharmacoNODE/blob/main/models.py
+# Improvements:
+# 1. Removed pre-training step (synthetic data)
+# 2. Used Adam2 optimizer and weighted log loss
+# 3. Used ReduceLROnPlateau scheduler so learning rate is automatically lowered when model loss plateaus
+
 
 def train(
     model: PKNODE,

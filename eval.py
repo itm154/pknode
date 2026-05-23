@@ -5,12 +5,15 @@ import shutil
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from torch.nn import MSELoss
 from tqdm import tqdm
 
 import utils
 from data import PKData
 from model import PKNODE
+
+# Overhauled from: https://github.com/TommyGiak/pharmacoNODE/blob/main/models.py
+# Plots per patient PK curve and other remedial measure plots
+# Plot function is now split from the model definition
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -155,7 +158,8 @@ if __name__ == "__main__":
         if args.save_plots:
             if os.path.exists(plots_dir):
                 shutil.rmtree(plots_dir)
-            os.makedirs(plots_dir, exist_ok=True)
+            pk_dir = os.path.join(plots_dir, "pk_curves")
+            os.makedirs(pk_dir, exist_ok=True)
 
             for patient, p_data in tqdm(patient_results, desc="Generating plots"):
                 p_times_plot = list(p_data["times"]) + list(p_data["admin_times"])
@@ -206,14 +210,15 @@ if __name__ == "__main__":
 
                 plt.legend()
                 plt.grid(True, alpha=0.3)
+                plt.tight_layout()
 
-                plots_path = os.path.join(plots_dir, f"{patient}.png")
+                plots_path = os.path.join(pk_dir, f"{patient}.png")
                 plt.savefig(plots_path, dpi=300)
                 plt.close()
 
-            # Observed vs Predicted plot
+            # Predicted vs Observed plot
             plt.figure(figsize=(8, 8))
-            plt.scatter(preds_arr, target_arr, alpha=0.5)
+            plt.scatter(target_arr, preds_arr, alpha=0.5)
 
             all_min = np.min([plt.xlim()[0], plt.ylim()[0]])
             all_max = np.max([plt.xlim()[1], plt.ylim()[1]])
@@ -221,15 +226,16 @@ if __name__ == "__main__":
                 [all_min, all_max], [all_min, all_max], "r--", alpha=0.75, zorder=0
             )
 
-            plt.xlabel("Predicted Concentration")
-            plt.ylabel("Observed Concentration")
-            plt.title("Observed vs Predicted")
+            plt.xlabel("Observed Concentration")
+            plt.ylabel("Predicted Concentration")
+            plt.title("Predicted vs Observed")
             plt.grid(True, alpha=0.3)
             plt.tight_layout()
 
-            obs_pred_path = os.path.join(plots_dir, "obs_vs_pred.png")
+            obs_pred_path = os.path.join(plots_dir, "pred_vs_obs.png")
             plt.savefig(obs_pred_path, dpi=300)
             print(f"Plots and summary saved to {plots_dir}")
+
             plt.close()
     else:
         print("\nNo valid observations found for evaluation.")
