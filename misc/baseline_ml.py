@@ -14,9 +14,8 @@ import pandas as pd
 matplotlib.use("Agg")  # prevent GUI pop-up
 
 from sklearn.compose import ColumnTransformer
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.impute import SimpleImputer
-from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -25,18 +24,15 @@ from utils import getConfig  # Reuse utils
 
 
 # Create output directories for plots
-def create_dirs(model_names):
+def create_dirs():
     base_dir = "misc/ml_plots"
     if os.path.exists(base_dir):
         shutil.rmtree(base_dir)
-    os.makedirs(base_dir, exist_ok=True)
-    for name in model_names:
-        folder_name = name.lower().replace(" ", "_")
-        os.makedirs(os.path.join(base_dir, folder_name, "pk_curves"), exist_ok=True)
+    os.makedirs(os.path.join(base_dir, "pk_curves"), exist_ok=True)
 
 
-# Clean data
-def clean_data(df, col_config):
+# Clean and Engineer Data
+def clean_and_engineer_data(df, col_config):
     df = df.copy()
     df.replace(".", np.nan, inplace=True)
 
@@ -48,31 +44,57 @@ def clean_data(df, col_config):
     if target_col is None:
         raise ValueError("No concentration column found.")
 
-    print("Target Column: ", target_col)
     df[target_col] = pd.to_numeric(df[target_col], errors="coerce")
+    id_col = col_config.get("id", "ID")
+    time_col = col_config.get("time", "TIME")
+    dose_col = col_config.get("dose", "DOSE")
 
-    # Filter for observations (EVID=0) if column exists
+    # Basic cleaning
+    df[time_col] = pd.to_numeric(df[time_col], errors="coerce").fillna(0)
+    if dose_col in df.columns:
+        df[dose_col] = pd.to_numeric(df[dose_col], errors="coerce").fillna(0)
+
+    # Feature Engineering
+    # 1. Time Since Last Dose (TSLD)
+    df = df.sort_values([id_col, time_col])
+
+    is_dose = (df["EVID"] == 1) if "EVID" in df.columns else (df[dose_col] > 0)
+    df["DOSE_TIME"] = np.where(is_dose, df[time_col], np.nan)
+    df["LAST_DOSE_TIME"] = df.groupby(id_col)["DOSE_TIME"].ffill()
+    df["TSLD"] = df[time_col] - df["LAST_DOSE_TIME"]
+    df["TSLD"] = df["TSLD"].fillna(df[time_col])  # Fallback to time if no dose yet
+
+    # 2. Cumulative Dose
+    df["CUM_DOSE"] = df.groupby(id_col)[dose_col].cumsum()
+
+    # 3. Last Dose Amount
+    df["LAST_DOSE_AMT"] = np.where(is_dose, df[dose_col], np.nan)
+    df["LAST_DOSE_AMT"] = df.groupby(id_col)["LAST_DOSE_AMT"].ffill().fillna(0)
+
+    # Filter for observations (EVID=0) for training/testing
     evid_col = col_config.get("evid")
     if evid_col and evid_col in df.columns:
-        df = df[df[evid_col] == 0]
+        df_clean = df[df[evid_col] == 0].copy()
     else:
-        # Fallback: remove rows where concentration is NaN
-        df = df.dropna(subset=[target_col])
-        # If no EVID, rows with dose > 0 are administrations
-        dose_col = col_config.get("dose")
-        if dose_col and dose_col in df.columns:
-            df = df[pd.to_numeric(df[dose_col], errors="coerce").fillna(0) == 0]
+        df_clean = df[df[target_col].notna() & (df[dose_col] == 0)].copy()
 
-    return df, target_col
+    return df_clean, target_col, df  # Return full df for PK curve plotting
 
 
 # Build features
 def build_features(df, target_col):
     X = df.drop(columns=[target_col])
-    y = df[target_col]
+
+    # Identify relevant features
     numeric_cols = X.select_dtypes(include=np.number).columns.tolist()
+
+    # Remove identifiers that shouldn't be features
+    for col in ["ID", "EVID", "DOSE_TIME", "LAST_DOSE_TIME"]:
+        if col in numeric_cols:
+            numeric_cols.remove(col)
+
     X = X[numeric_cols]
-    return X, y, numeric_cols
+    return X, df[target_col], numeric_cols
 
 
 # Preprocessor
@@ -136,71 +158,83 @@ def print_metrics(name, metrics):
     print(f"{'R-squared (Log)':<20} | {metrics['R-squared (Log)']:.4f}")
 
 
-def plot_results(name, y_true, y_pred):
-    folder_name = name.lower().replace(" ", "_")
-    model_dir = os.path.join("misc/ml_plots", folder_name)
+def plot_results(y_true, y_pred):
+    model_dir = "misc/ml_plots"
 
-    plt.figure(figsize=(6, 5))
-    plt.scatter(y_true, y_pred, alpha=0.6)
-    min_v, max_v = min(y_true.min(), y_pred.min()), max(y_true.max(), y_pred.max())
-    plt.plot([min_v, max_v], [min_v, max_v], "r--")
-    plt.xlabel("True Concentration")
+    plt.figure(figsize=(8, 8))
+    plt.scatter(y_true, y_pred, alpha=0.5)
+
+    all_min = np.min([plt.xlim()[0], plt.ylim()[0]])
+    all_max = np.max([plt.xlim()[1], plt.ylim()[1]])
+    plt.plot([all_min, all_max], [all_min, all_max], "r--", alpha=0.75, zorder=0)
+
+    plt.xlabel("Observed Concentration")
     plt.ylabel("Predicted Concentration")
-    plt.title(f"{name}: True vs Predicted")
+    plt.title("Predicted vs Observed")
+    plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig(os.path.join(model_dir, "true_vs_pred.png"), dpi=300)
-    plt.close()
 
-    residuals = y_true - y_pred
-    plt.figure(figsize=(6, 5))
-    plt.scatter(y_pred, residuals, alpha=0.6)
-    plt.axhline(0, color="red", linestyle="--")
-    plt.xlabel("Predicted")
-    plt.ylabel("Residuals")
-    plt.title(f"{name} Residuals")
-    plt.tight_layout()
-    plt.savefig(os.path.join(model_dir, "residuals.png"), dpi=300)
+    plt.savefig(os.path.join(model_dir, "pred_vs_obs.png"), dpi=300)
     plt.close()
 
 
-def plot_model_pk_curves(name, pipeline, df, id_col, time_col, target_col):
+def plot_model_pk_curves(pipeline, df_full, id_col, time_col, dose_col, target_col):
     if id_col is None or time_col is None:
         return
 
-    folder_name = name.lower().replace(" ", "_")
-    pk_dir = os.path.join("misc/ml_plots", folder_name, "pk_curves")
+    pk_dir = "misc/ml_plots/pk_curves"
 
-    df_plot = df.copy()
-    df_plot[time_col] = pd.to_numeric(df_plot[time_col], errors="coerce")
-
-    # Predict for the whole set
-    X, _, _ = build_features(df_plot, target_col)
-    df_plot["PRED"] = pipeline.predict(X)
+    # Predict for the whole set (including administrations) to see the curve shape
+    # We use the full engineered dataframe
+    X_plot, _, _ = build_features(df_full, target_col)
+    df_plot = df_full.copy()
+    df_plot["PRED"] = pipeline.predict(X_plot)
 
     for pid in df_plot[id_col].dropna().unique():
         patient = df_plot[df_plot[id_col] == pid].sort_values(time_col)
         if len(patient) < 1:
             continue
 
-        plt.figure(figsize=(8, 5))
+        plt.figure(figsize=(10, 6))
         plt.plot(
-            patient[time_col], patient["PRED"], label=f"{name} Prediction", color="blue"
+            patient[time_col], patient["PRED"], label="ML Prediction", color="blue"
         )
-        plt.scatter(
-            patient[time_col],
-            patient[target_col],
-            color="red",
-            label="Ground Truth",
-            zorder=5,
+
+        # Add vertical lines for administrations
+        dose_times = patient[patient[dose_col] > 0][time_col]
+        for dt in dose_times:
+            plt.axvline(
+                x=dt,
+                color="gray",
+                linestyle="--",
+                alpha=0.4,
+                label="Administration" if dt == dose_times.iloc[0] else "",
+            )
+
+        # Only scatter points that were actually observations
+        is_obs = (
+            (patient["EVID"] == 0)
+            if "EVID" in patient.columns
+            else (patient[target_col] > 0)
         )
+        obs = patient[is_obs]
+
+        if not obs.empty:
+            plt.scatter(
+                obs[time_col],
+                obs[target_col],
+                color="red",
+                label="Ground Truth",
+                zorder=5,
+            )
 
         plt.xlabel("Time")
         plt.ylabel("Concentration")
-        plt.title(f"{name} PK Curve - Patient {pid}")
+        plt.title(f"Patient Drug Concentration Prediction for ID: {pid}")
         plt.legend()
         plt.grid(True, alpha=0.3)
         plt.tight_layout()
-        plt.savefig(os.path.join(pk_dir, f"pk_{pid}.png"), dpi=300)
+        plt.savefig(os.path.join(pk_dir, f"{pid}.png"), dpi=300)
         plt.close()
 
 
@@ -214,33 +248,37 @@ def main(config_path):
     if not os.path.exists(test_path):
         test_path = os.path.join("..", test_path)
 
-    train_df, target_col = clean_data(pd.read_csv(train_path), col_config)
-    test_df, _ = clean_data(pd.read_csv(test_path), col_config)
+    # Load and engineer
+    train_raw = pd.read_csv(train_path)
+    test_raw = pd.read_csv(test_path)
+
+    train_df, target_col, _ = clean_and_engineer_data(train_raw, col_config)
+    test_df, _, test_df_full = clean_and_engineer_data(test_raw, col_config)
 
     X_train, y_train, numeric_cols = build_features(train_df, target_col)
-    X_test, y_test = test_df[numeric_cols], test_df[target_col]
+    X_test, y_test, _ = build_features(test_df, target_col)
 
-    models = {
-        "Linear Regression": LinearRegression(),
-        "Random Forest": RandomForestRegressor(
-            n_estimators=100, max_depth=10, random_state=42, n_jobs=-1
-        ),
-    }
+    model = HistGradientBoostingRegressor(
+        max_iter=200, max_depth=10, learning_rate=0.05, random_state=42
+    )
 
-    create_dirs(models.keys())
-    id_col, time_col = col_config.get("id"), col_config.get("time")
+    create_dirs()
+    id_col, time_col, dose_col = (
+        col_config.get("id"),
+        col_config.get("time"),
+        col_config.get("dose"),
+    )
 
-    for name, model in models.items():
-        pipeline = Pipeline(
-            [("preprocessor", get_preprocessor(numeric_cols)), ("model", model)]
-        )
-        pipeline.fit(X_train, y_train)
+    pipeline = Pipeline(
+        [("preprocessor", get_preprocessor(numeric_cols)), ("model", model)]
+    )
+    pipeline.fit(X_train, y_train)
 
-        y_pred = pipeline.predict(X_test)
-        metrics = calculate_all_metrics(y_test, y_pred)
-        print_metrics(name, metrics)
-        plot_results(name, y_test, y_pred)
-        plot_model_pk_curves(name, pipeline, test_df, id_col, time_col, target_col)
+    y_pred = pipeline.predict(X_test)
+    metrics = calculate_all_metrics(y_test, y_pred)
+    print_metrics("Gradient Boosting", metrics)
+    plot_results(y_test, y_pred)
+    plot_model_pk_curves(pipeline, test_df_full, id_col, time_col, dose_col, target_col)
 
 
 if __name__ == "__main__":

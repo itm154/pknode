@@ -1,5 +1,6 @@
 import argparse
 import os
+import shutil
 import sys
 
 # Add parent directory to path to allow importing utils
@@ -115,11 +116,15 @@ def run_individual_pipeline(file_path):
     return df, map_estimate, patients, cov_type
 
 
-def plot_individual_profiles(df, map_estimate, patients, cov_type):
+def plot_individual_profiles(df, map_estimate, patients, cov_type, target_col):
     print(
         f"Generating individual plots for {len(patients)} patients in misc/nlme_plots directory..."
     )
-    os.makedirs("misc/nlme_plots", exist_ok=True)
+    plots_dir = "misc/nlme_plots"
+    pk_dir = os.path.join(plots_dir, "pk_curves")
+    if os.path.exists(plots_dir):
+        shutil.rmtree(plots_dir)
+    os.makedirs(pk_dir, exist_ok=True)
 
     all_obs_list = []
     all_pred_list = []
@@ -131,23 +136,9 @@ def plot_individual_profiles(df, map_estimate, patients, cov_type):
         obs_data = patient_data[patient_data["EVID"] == 0]
         dose_data = patient_data[patient_data["EVID"] == 1]
 
-        # Ground truth points
-        if not obs_data.empty:
-            plt.scatter(
-                obs_data["TIME"],
-                obs_data["CP"],
-                color="red",
-                label="Observed",
-                zorder=5,
-            )
-
-        # Dose markers
-        for dose_time in dose_data["TIME"]:
-            plt.axvline(x=dose_time, color="gray", linestyle="--", alpha=0.5)
-
         # Predicted curve
         t_min, t_max = patient_data["TIME"].min(), patient_data["TIME"].max()
-        t_grid = np.linspace(t_min, t_max, 300)
+        t_grid = np.linspace(t_min, t_max, 500)
 
         # Re-calculate parameters for this individual from MAP
         p_idx = np.where(patients == pid)[0][0]
@@ -203,6 +194,31 @@ def plot_individual_profiles(df, map_estimate, patients, cov_type):
             )
             cp_pred[valid_mask] += contribution
 
+        plt.plot(t_grid, cp_pred, label="NLME Prediction", color="blue")
+
+        # Ground truth points
+        plt.scatter(
+            obs_data["TIME"],
+            obs_data[target_col] if target_col in obs_data.columns else obs_data["CP"],
+            color="red",
+            label="Ground Truth",
+            zorder=5,
+        )
+
+        # Dose markers
+        for dose_time in dose_data["TIME"]:
+            plt.axvline(x=dose_time, color="gray", linestyle="--", alpha=0.5)
+
+        plt.xlabel("Time")
+        plt.ylabel("Concentration")
+        plt.title(f"Patient Drug Concentration Prediction for ID: {pid}")
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+
+        plt.savefig(os.path.join(pk_dir, f"{pid}.png"), dpi=300)
+        plt.close()
+
         # Calculate predicted concentration at observation times for obs vs pred plot
         if not obs_data.empty:
             obs_times = obs_data["TIME"].values
@@ -223,25 +239,14 @@ def plot_individual_profiles(df, map_estimate, patients, cov_type):
                 )
                 cp_obs_pred[valid_obs_mask] += contribution
 
-            all_obs_list.extend(obs_data["CP"].values)
+            all_obs_list.extend(obs_data[target_col].values)
             all_pred_list.extend(cp_obs_pred)
-
-        plt.plot(t_grid, cp_pred, label="Predicted Curve", color="blue", linewidth=2)
-        plt.title(f"Tobramycin Individual Profile - Patient ID: {pid}")
-        plt.xlabel("Time (h)")
-        plt.ylabel("Concentration (mg/L)")
-        plt.legend()
-        plt.grid(True, alpha=0.3)
-
-        plt.savefig(f"misc/nlme_plots/patient_{pid}.png")
-        plt.close()
 
     if all_obs_list:
         all_obs = np.array(all_obs_list)
         all_pred = np.array(all_pred_list)
-        max_val = max(np.max(all_obs), np.max(all_pred)) * 1.05
 
-        # Calculate and Print Metrics
+        # --- Calculate and Print Metrics (matching eval.py) ---
         target_arr = all_obs
         preds_arr = all_pred
 
@@ -279,16 +284,20 @@ def plot_individual_profiles(df, map_estimate, patients, cov_type):
         print(f"{'R-squared (Log)':<20} | {r2_log:.4f}\n")
         # ----------------------------------------------------
 
-        plt.figure(figsize=(6, 6))
-        plt.scatter(all_obs, all_pred, alpha=0.5)
-        plt.plot([0, max_val], [0, max_val], "r--")
+        plt.figure(figsize=(8, 8))
+        plt.scatter(target_arr, preds_arr, alpha=0.5)
+
+        all_min = np.min([plt.xlim()[0], plt.ylim()[0]])
+        all_max = np.max([plt.xlim()[1], plt.ylim()[1]])
+        plt.plot([all_min, all_max], [all_min, all_max], "r--", alpha=0.75, zorder=0)
+
         plt.xlabel("Observed Concentration")
         plt.ylabel("Predicted Concentration")
-        plt.xlim(0, max_val)
-        plt.ylim(0, max_val)
+        plt.title("Predicted vs Observed")
         plt.grid(True, alpha=0.3)
-        plt.title("Observed vs Predicted")
-        plt.savefig("misc/nlme_plots/obs_v_pred.png")
+        plt.tight_layout()
+
+        plt.savefig(os.path.join(plots_dir, "pred_vs_obs.png"), dpi=300)
         plt.close()
 
 
@@ -315,7 +324,8 @@ def main(config_path, file_path=None):
             sys.exit(1)
 
     df, map_estimate, patients, cov_type = run_individual_pipeline(file_path)
-    plot_individual_profiles(df, map_estimate, patients, cov_type)
+    target_col = "CP" if "CP" in df.columns else "DV"
+    plot_individual_profiles(df, map_estimate, patients, cov_type, target_col)
 
 
 if __name__ == "__main__":
