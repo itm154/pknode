@@ -129,7 +129,7 @@ The project uses TOML files for configuration.
 
 #### `[settings.nn]`
 
-- `dim_c` (list of integers): Layers for dynamics network (e.g.,
+- `dim_z` (list of integers): Layers for dynamics network (e.g.,
   `[32, 32, 32]`).
 - `dim_V` (list of integers): Layers for Volume network (e.g., `[16]`).
 - `include_covariates` (boolean): Enable/disable covariate usage.
@@ -160,7 +160,7 @@ patience = 5
 factor = 0.5
 
 [settings.nn]
-dim_c = [64, 64, 64]
+dim_z = [64, 64, 64]
 dim_V = [16]
 include_covariates = true
 ```

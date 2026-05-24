@@ -167,14 +167,14 @@ if __name__ == "__main__":
     # Model initialization
     # Get configuration from config.toml file
     nn_settings = config["settings"]["nn"]
-    dim_c = nn_settings["dim_c"]
+    dim_z = nn_settings["dim_z"]
     if nn_settings["include_covariates"]:
         dim_V = nn_settings["dim_V"]
         n_cov = len(config["data"]["columns"]["covariates"])
-        model = PKNODE(dim_c, dim_V, n_cov)
+        model = PKNODE(dim_z, dim_V, n_cov)
         include_cov = True
     else:
-        model = PKNODE(dim_c)
+        model = PKNODE(dim_z)
         include_cov = False
 
     # Tru to use GPU/CUDA if available

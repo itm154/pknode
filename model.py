@@ -26,7 +26,7 @@ class PKNODE(nn.Module):
 
     def __init__(
         self,
-        dim_c: list[int],
+        dim_z: list[int],
         dim_V: list[int] | None = None,
         dim_cov: int = 0,
     ):
@@ -55,18 +55,18 @@ class PKNODE(nn.Module):
 
         # Dynamics network
         # input: z (state_dim), t (1), z0 (state_dim), cov (dim_cov)
-        input_c = 2 * self.state_dim + 1 + (dim_cov if self.include_covariates else 0)
-        layers_c = []
-        in_dim = input_c
-        for dim in dim_c:
-            layers_c.append(nn.Linear(in_dim, dim))
-            layers_c.append(nn.SiLU())
+        input_z = 2 * self.state_dim + 1 + (dim_cov if self.include_covariates else 0)
+        layers_z = []
+        in_dim = input_z
+        for dim in dim_z:
+            layers_z.append(nn.Linear(in_dim, dim))
+            layers_z.append(nn.SiLU())
             in_dim = dim
 
-        layers_c.append(nn.Linear(in_dim, self.num_rates))
-        self.net_c = nn.Sequential(*layers_c)
+        layers_z.append(nn.Linear(in_dim, self.num_rates))
+        self.net_z = nn.Sequential(*layers_z)
 
-        # Covariate projection network
+        # Volume/Covariate projection network
         if self.include_covariates:
             layers_V = []
             in_dim_V = dim_cov
@@ -93,7 +93,7 @@ class PKNODE(nn.Module):
                 nn.init.orthogonal_(m.weight, gain=0.1)
                 nn.init.zeros_(m.bias)
 
-        last_layer_c = self.net_c[-1]
+        last_layer_c = self.net_z[-1]
         if isinstance(last_layer_c, nn.Linear):
             nn.init.zeros_(last_layer_c.weight)
             nn.init.zeros_(last_layer_c.bias)
@@ -153,7 +153,7 @@ class PKNODE(nn.Module):
                 ]
             )
 
-        rates = torch.nn.functional.softplus(self.net_c(x))
+        rates = torch.nn.functional.softplus(self.net_z(x))
 
         dzdt = torch.zeros_like(z_safe)
         k_idx = 0
