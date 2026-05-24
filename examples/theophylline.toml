@@ -1,7 +1,6 @@
 [model]
 name = "theophylline"
 path = "./models"
-absorption = true
 
 [data]
 train_file = "./data/theophylline_train.csv"

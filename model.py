@@ -29,21 +29,19 @@ class PKNODE(nn.Module):
         dim_c: list[int],
         dim_V: list[int] | None = None,
         dim_cov: int = 0,
-        absorption: bool = False,
     ):
         super().__init__()
 
         # Check if covariates are used
         self.include_covariates = dim_V is not None
         self.dim_cov = dim_cov
-        self.absorption = absorption
 
         # State dimension: central (+ depot if absorption)
-        self.state_dim = 1 + (1 if absorption else 0)
+        self.state_dim = 2
 
         # Number of rate constants (k) to predict
         # k_a (if abs), k_el (always)
-        self.num_rates = (1 if absorption else 0) + 1
+        self.num_rates = 2
 
         # Define the layers of the neural network
 
@@ -160,20 +158,16 @@ class PKNODE(nn.Module):
         dzdt = torch.zeros_like(z_safe)
         k_idx = 0
 
-        if self.absorption:
-            ka = rates[k_idx]
-            k_idx += 1
-            dzdt[0] -= ka * z_safe[0]
-            central_idx = 1
-        else:
-            central_idx = 0
+        ka = rates[k_idx]
+        k_idx += 1
+        dzdt[0] -= ka * z_safe[0]
+        central_idx = 1
 
         kel = rates[k_idx]
         k_idx += 1
 
         # Central compartment
         dzdt[central_idx] -= kel * z_safe[central_idx]
-        if self.absorption:
-            dzdt[central_idx] += ka * z_safe[0]
+        dzdt[central_idx] += ka * z_safe[0]
 
         return dzdt

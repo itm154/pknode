@@ -73,7 +73,7 @@ def train(
                 pred = res
 
             # Extract central compartment concentration
-            central_idx = 1 if model.absorption else 0
+            central_idx = 1
             if pred.numel() > 0:
                 pred = pred[:, central_idx].view(-1, 1)
 
@@ -167,17 +167,14 @@ if __name__ == "__main__":
     # Model initialization
     # Get configuration from config.toml file
     nn_settings = config["settings"]["nn"]
-    model_settings = config["model"]
-    absorption = model_settings.get("absorption", False)
-
     dim_c = nn_settings["dim_c"]
     if nn_settings["include_covariates"]:
         dim_V = nn_settings["dim_V"]
         n_cov = len(config["data"]["columns"]["covariates"])
-        model = PKNODE(dim_c, dim_V, n_cov, absorption)
+        model = PKNODE(dim_c, dim_V, n_cov)
         include_cov = True
     else:
-        model = PKNODE(dim_c, absorption=absorption)
+        model = PKNODE(dim_c)
         include_cov = False
 
     # Tru to use GPU/CUDA if available

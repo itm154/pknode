@@ -1,7 +1,6 @@
 [model]
 name = "mavoglurant"
 path = "./models"
-absorption = true
 
 [data]
 train_file = "./data/mavoglurant_train.csv"

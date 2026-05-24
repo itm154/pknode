@@ -1,7 +1,6 @@
 [model]
 name = "warfarin"
 path = "./models"
-absorption = false
 
 [data]
 train_file = "./data/warfarin_train.csv"

@@ -1,7 +1,6 @@
 [model]
-name = "tobramycin_abs"
+name = "tobramycin"
 path = "./models"
-absorption = true
 
 [data]
 train_file = "./data/tobramycin_train.csv"

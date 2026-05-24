@@ -1,7 +1,6 @@
 [model]
 name = "phenobarbital"
 path = "./models"
-absorption = false
 
 [data]
 train_file = "./data/phenobarbitol_train.csv"

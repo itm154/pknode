@@ -103,9 +103,6 @@ The project uses TOML files for configuration.
 
 - `name` (string): Name of the model (used for filenames).
 - `path` (string): Directory to save models.
-- `absorption` (boolean): `true` for first-order absorption (ADME), `false` for
-  instantaneous absorption (DME). Set based on drug/dataset's administration
-  method.
 
 #### `[data]`
 
@@ -143,7 +140,6 @@ The project uses TOML files for configuration.
 [model]
 name = "theophylline"
 path = "./models"
-absorption = true
 
 [data]
 train_file = "./data/theophylline_train.csv"
